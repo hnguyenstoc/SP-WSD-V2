@@ -457,11 +457,22 @@ table.dt td.neg   { color: var(--red);   font-weight: 600; }
 .yoy-badge.pos { background: var(--green-lt); color: var(--green); }
 .yoy-badge.neg { background: var(--red-lt);   color: var(--red);   }
 .stage-badge {
-  display: inline-block; padding: 2px 9px; border-radius: 11px;
+  display: inline-block; vertical-align: middle;
+  padding: 3px 10px; border-radius: 11px; line-height: 1.4;
   background: rgba(27,53,100,0.08); color: var(--navy);
   font-family: 'Inter', -apple-system, sans-serif;
   font-weight: 600; font-size: 11px; letter-spacing: 0.3px; white-space: nowrap;
 }
+.rev-badge {
+  display: inline-block; vertical-align: middle;
+  padding: 3px 10px; border-radius: 11px; line-height: 1.4;
+  font-family: 'Inter', -apple-system, sans-serif;
+  font-weight: 700; font-size: 11px; letter-spacing: 0.3px; white-space: nowrap;
+}
+.rev-badge.out     { background: var(--green);          color: #FFFFFF;      }  /* Outperforming */
+.rev-badge.aligned { background: rgba(27,110,69,0.12);  color: #3C8B63;      }  /* Aligned (neutral green) */
+.rev-badge.watch   { background: var(--amber-lt);       color: var(--amber); }  /* Watch */
+.rev-badge.under   { background: var(--red-lt);         color: var(--red);   }  /* Underperforming */
 .partial-tag {
   display: inline-flex; align-items: center; gap: 3px;
   padding: 1px 5px; border-radius: 3px;
@@ -670,7 +681,7 @@ table.dt td.neg   { color: var(--red);   font-weight: 600; }
        ════════════════════════════════════════════ -->
   <div id="tab-overview" class="tab-panel active">
 
-    <div class="sec-head"><span class="sec-title">Portfolio TTM vs LOI</span><span class="sec-rule"></span></div>
+    <div class="sec-head"><span class="sec-title">Portfolio TTM vs LOI</span><span id="cmpStatus" class="rev-badge" style="display:none"></span><span class="sec-rule"></span></div>
     <div class="ttm-block" style="margin-bottom:24px">
       <div class="cmp-grid">
         <div class="cmp-card">
@@ -770,11 +781,12 @@ table.dt td.neg   { color: var(--red);   font-weight: 600; }
               <th>LOI Revenue</th>
               <th>$ Variance</th>
               <th>% vs LOI</th>
+              <th class="l">Status</th>
               <th class="l">Latest Data</th>
             </tr>
           </thead>
           <tbody id="dealSummaryBody">
-            <tr><td colspan="8" style="text-align:center;color:var(--text3);padding:20px;">Loading…</td></tr>
+            <tr><td colspan="9" style="text-align:center;color:var(--text3);padding:20px;">Loading…</td></tr>
           </tbody>
         </table>
       </div>
@@ -1334,9 +1346,36 @@ function aggregateWeekly(data) {
 /* ════════════════════════════════════════════════════════════
    TTM & YOY
    ════════════════════════════════════════════════════════════ */
+/* A trailing month is treated as "partial" (and excluded from TTM) if its
+   distinct-day count is below this fraction of the deal's typical full month.
+   The baseline is the deal's own median day-count, so it self-adjusts to each
+   deal's working pattern and never misfires on monthly-granularity deals
+   (where every month has ~1 day, so the median is ~1 and nothing trims). */
+const PARTIAL_MONTH_THRESHOLD = 0.7;
+
+/* Drop incomplete months off the end of a sorted monthly series so TTM rolls
+   back to the most recent FULL month. Only trailing months are trimmed —
+   interior months are complete by definition (they have a later month). */
+function trimTrailingPartial(sorted) {
+  let arr = [...sorted];
+  while (arr.length > 2) {
+    const last = arr[arr.length - 1];
+    const baseline = arr.slice(0, -1).map(m => m.days).filter(d => d > 0).sort((a,b) => a - b);
+    if (!baseline.length) break;
+    const median = baseline[Math.floor(baseline.length / 2)];
+    if (median <= 1) break;                                  // monthly-granularity / too sparse to judge
+    if ((last.days || 0) < PARTIAL_MONTH_THRESHOLD * median) {
+      arr = arr.slice(0, -1);                                // partial → drop and re-test the new last month
+    } else break;                                            // last month is full → stop
+  }
+  return arr;
+}
+
 function calcTTM(monthly) {
   if (!monthly.length) return null;
-  const sorted = [...monthly].sort((a,b) => a.key.localeCompare(b.key));
+  let sorted = [...monthly].sort((a,b) => a.key.localeCompare(b.key));
+  sorted = trimTrailingPartial(sorted);
+  if (!sorted.length) return null;
   const endIdx = sorted.length - 1;
   const startIdx = Math.max(0, endIdx - 11);
   const window = sorted.slice(startIdx, endIdx + 1);
@@ -1350,8 +1389,25 @@ function calcTTM(monthly) {
   };
 }
 
+/* Classify current TTM revenue against the LOI baseline.
+   varP = (TTM − LOI) / LOI:
+     >  +1%            → Outperforming
+     within ±1%        → Aligned       (lower by <1% or higher by ≤1%)
+     lower by 1–5%     → Watch
+     lower by >5%      → Underperforming
+   Returns null when TTM or a positive LOI isn't available. */
+function revenueStatus(ttm, loi) {
+  if (ttm == null || loi == null || !(loi > 0)) return null;
+  const v = (ttm - loi) / loi;
+  if (v >  0.01) return { label: 'Outperforming',   cls: 'out'     };
+  if (v > -0.01) return { label: 'Aligned',         cls: 'aligned' };  // -1% < v ≤ +1%
+  if (v >= -0.05) return { label: 'Watch',          cls: 'watch'   };  // lower by 1–5%
+  return            { label: 'Underperforming', cls: 'under'   };       // lower by >5%
+}
+
 function calcRollingTTM(monthly) {
-  const sorted = [...monthly].sort((a,b) => a.key.localeCompare(b.key));
+  let sorted = [...monthly].sort((a,b) => a.key.localeCompare(b.key));
+  sorted = trimTrailingPartial(sorted);
   const out = [];
   for (let i = 11; i < sorted.length; i++) {
     const w = sorted.slice(i-11, i+1);
@@ -1810,6 +1866,18 @@ function renderTTMvsLOI(monthly) {
   } else {
     set('cmpVarD','—'); set('cmpVarDSub','Set LOI values to enable'); set('cmpVarP','—');
     setS('cmpVarD','color',''); setS('cmpVarP','color','');
+  }
+
+  const status = revenueStatus(ttm ? ttm.amount : null, loiTotal);
+  const statusEl = document.getElementById('cmpStatus');
+  if (statusEl) {
+    if (status) {
+      statusEl.textContent = status.label;
+      statusEl.className = 'rev-badge ' + status.cls;
+      statusEl.style.display = '';
+    } else {
+      statusEl.style.display = 'none';
+    }
   }
 
   const rolling = calcRollingTTM(monthly);
@@ -2322,7 +2390,7 @@ function renderDealSummary() {
   if (!body) return;
   const activeDealNames = [...new Set(filteredData.map(r => r.deal))].sort();
   if (!activeDealNames.length) {
-    body.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text3);padding:20px;">No data loaded</td></tr>';
+    body.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--text3);padding:20px;">No data loaded</td></tr>';
     return;
   }
   body.innerHTML = activeDealNames.map(dealName => {
@@ -2342,6 +2410,10 @@ function renderDealSummary() {
     const pctHtml    = varP != null
       ? `<span class="yoy-badge ${varP>=0?'pos':'neg'}">${varP>=0?'↑ +':'↓ '}${(varP*100).toFixed(1)}%</span>`
       : '<span style="color:var(--text3);font-size:11px">Set in LOI Config</span>';
+    const status     = revenueStatus(ttm ? ttm.amount : null, loi);
+    const statusHtml = status
+      ? `<span class="rev-badge ${status.cls}">${status.label}</span>`
+      : '<span style="color:var(--text3);font-size:11px">—</span>';
     return `<tr>
       <td class="l deal-name">${dealName}</td>
       <td class="l">${stageHtml}</td>
@@ -2350,6 +2422,7 @@ function renderDealSummary() {
       <td>${loi ? fmtM(loi, true) : '<span style="color:var(--text3);font-size:11px">—</span>'}</td>
       <td style="color:${varCol};font-weight:700">${varD != null ? (varD>=0?'↑ +':'↓ ')+fmtM(varD,true) : '—'}</td>
       <td>${pctHtml}</td>
+      <td class="l">${statusHtml}</td>
       <td class="l period-lbl">${latest ? latest.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—'}</td>
     </tr>`;
   }).join('');
