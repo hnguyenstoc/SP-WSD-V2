@@ -1,0 +1,2379 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SP USA | Dental Practice Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<style>
+/* ─────────────────────────────────────────────────────────────
+   DESIGN TOKENS  ·  Light / Professional Finance Theme
+   ───────────────────────────────────────────────────────────── */
+:root {
+  --bg:       #EEF1F7;
+  --surface:  #FFFFFF;
+  --surface2: #F4F6FB;
+  --surface3: #EBEEf5;
+  --border:   #DDE2EE;
+  --border2:  #C8CFE0;
+
+  --navy:     #1B3564;   /* SP USA deep navy — primary */
+  --navy-lt:  #2A4B8C;
+  --green:    #1B6E45;   /* positive/up */
+  --green-lt: rgba(27,110,69,0.10);
+  --red:      #C0392B;   /* negative/down */
+  --red-lt:   rgba(192,57,43,0.10);
+  --amber:    #B45309;
+  --amber-lt: rgba(180,83,9,0.10);
+  --blue:     #1D4ED8;
+  --blue-lt:  rgba(29,78,216,0.08);
+
+  --text:     #111827;
+  --text2:    #4B5563;
+  --text3:    #9CA3AF;
+  --text4:    #BDC3CF;
+
+  --radius:   7px;
+  --radius-sm:5px;
+  --shadow:   0 1px 4px rgba(27,53,100,0.08), 0 0 0 1px var(--border);
+  --shadow-md:0 4px 16px rgba(27,53,100,0.12), 0 0 0 1px var(--border);
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── LOADING ──────────────────────────────────────────────── */
+#loadingOverlay {
+  position: fixed; inset: 0;
+  background: rgba(255,255,255,0.97);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  z-index: 999; gap: 0;
+}
+.loading-logo { display: flex; align-items: center; gap: 14px; margin-bottom: 28px; }
+.loading-logo img { height: 36px; object-fit: contain; }
+.loading-sep { width: 1px; height: 32px; background: var(--border2); }
+.spinner {
+  width: 36px; height: 36px;
+  border: 3px solid var(--border);
+  border-top-color: var(--navy);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-text  { margin-top: 16px; color: var(--text2);  font-size: 14px; font-weight: 500; }
+.loading-detail{ margin-top: 5px;  color: var(--text3);  font-size: 12px; }
+
+/* ── HEADER ──────────────────────────────────────────────── */
+.header {
+  background: var(--navy);
+  padding: 0 28px;
+  display: flex; align-items: stretch; justify-content: space-between;
+  height: 60px;
+  position: sticky; top: 0; z-index: 200;
+}
+.header-left  { display: flex; align-items: center; gap: 18px; }
+.header-right { display: flex; align-items: center; gap: 16px; }
+
+.header-logo-sp {
+  height: 34px; object-fit: contain;
+  filter: brightness(0) invert(1);   /* make white on navy */
+}
+.header-logo-stoc {
+  height: 26px; object-fit: contain;
+  filter: brightness(0) invert(1) opacity(0.8);
+}
+.header-sep { width: 1px; height: 28px; background: rgba(255,255,255,0.2); }
+.header-title {
+  font-size: 14px; font-weight: 700;
+  color: #FFFFFF; letter-spacing: 0.1px;
+}
+.header-sub { font-size: 11px; color: rgba(255,255,255,0.55); margin-top: 1px; }
+
+.status-pill {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px; color: rgba(255,255,255,0.65);
+  background: rgba(255,255,255,0.08);
+  padding: 4px 12px; border-radius: 20px;
+}
+.dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text4); flex-shrink: 0; }
+.dot.green  { background: #4ADE80; box-shadow: 0 0 5px #4ADE80; }
+.dot.amber  { background: #FCD34D; }
+.dot.red    { background: #F87171; }
+
+.hbtn {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 6px 14px; border-radius: var(--radius-sm);
+  cursor: pointer; font-size: 12px; font-weight: 600;
+  transition: all 0.15s; border: none; letter-spacing: 0.2px;
+}
+.hbtn.ghost { background: rgba(255,255,255,0.1); color: #fff; }
+.hbtn.ghost:hover { background: rgba(255,255,255,0.18); }
+.hbtn.primary { background: #FFFFFF; color: var(--navy); }
+.hbtn.primary:hover { background: #EEF1F7; }
+
+/* ── FILTER BAR ──────────────────────────────────────────── */
+.filter-bar {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 10px 28px;
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+}
+.filter-group { display: flex; align-items: center; gap: 8px; }
+.filter-label {
+  font-size: 10px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.7px; color: var(--text3); white-space: nowrap;
+}
+.filter-bar-right { margin-left: auto; font-size: 11px; color: var(--text3); }
+
+/* Toggle view */
+.toggle-group {
+  display: flex; border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm); overflow: hidden; background: var(--surface2);
+}
+.toggle-btn {
+  padding: 5px 14px; background: transparent;
+  border: none; color: var(--text2); cursor: pointer;
+  font-size: 11px; font-weight: 700; transition: all 0.15s;
+  text-transform: uppercase; letter-spacing: 0.4px;
+}
+.toggle-btn.active { background: var(--navy); color: #fff; }
+
+/* Date inputs */
+input[type="date"] {
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  color: var(--text); padding: 5px 10px;
+  border-radius: var(--radius-sm); font-size: 12px;
+  font-family: inherit;
+}
+input[type="date"]:focus { outline: none; border-color: var(--navy); }
+
+/* ── CUSTOM SEARCHABLE SELECT ─────────────────────────────── */
+.csel {
+  position: relative;
+  user-select: none;
+  min-width: 160px;
+}
+.csel-trigger {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 5px 10px;
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer; font-size: 12px; color: var(--text);
+  transition: border-color 0.15s;
+  white-space: nowrap;
+}
+.csel-trigger:hover  { border-color: var(--border2); }
+.csel.open .csel-trigger { border-color: var(--navy); }
+.csel-arrow { color: var(--text3); font-size: 9px; transition: transform 0.2s; flex-shrink: 0; }
+.csel.open .csel-arrow { transform: rotate(180deg); }
+.csel-dropdown {
+  display: none;
+  position: absolute; top: calc(100% + 4px); left: 0;
+  min-width: 100%; max-width: 280px;
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  z-index: 300; overflow: hidden;
+}
+.csel.open .csel-dropdown { display: block; }
+.csel-search {
+  width: 100%; padding: 8px 12px;
+  border: none; border-bottom: 1px solid var(--border);
+  background: var(--surface2);
+  font-size: 12px; color: var(--text);
+  font-family: inherit;
+}
+.csel-search:focus { outline: none; }
+.csel-search::placeholder { color: var(--text3); }
+.csel-options { max-height: 220px; overflow-y: auto; }
+.csel-opt {
+  padding: 8px 12px; cursor: pointer; font-size: 12px;
+  color: var(--text); transition: background 0.1s;
+  display: flex; align-items: center; gap: 8px;
+}
+.csel-opt:hover { background: var(--surface2); }
+.csel-opt.selected { background: rgba(27,53,100,0.07); color: var(--navy); font-weight: 600; }
+.csel-opt.hidden { display: none; }
+.csel-empty { padding: 10px 12px; font-size: 12px; color: var(--text3); text-align: center; }
+
+/* ── MULTI-SELECT LOCATIONS ──────────────────────────────── */
+.msel { position: relative; user-select: none; min-width: 180px; }
+.msel-trigger {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 5px 10px;
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer; font-size: 12px; color: var(--text);
+  transition: border-color 0.15s;
+}
+.msel-trigger:hover  { border-color: var(--border2); }
+.msel.open .msel-trigger { border-color: var(--navy); }
+.msel-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--navy); color: #fff;
+  font-size: 10px; font-weight: 700; min-width: 18px; height: 18px;
+  border-radius: 9px; padding: 0 5px;
+}
+.msel-dropdown {
+  display: none;
+  position: absolute; top: calc(100% + 4px); left: 0;
+  min-width: 240px; max-width: 320px;
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  z-index: 300; overflow: hidden;
+}
+.msel.open .msel-dropdown { display: block; }
+.msel-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface2);
+}
+.msel-head-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text3); }
+.msel-clear { font-size: 11px; color: var(--navy); cursor: pointer; font-weight: 600; }
+.msel-clear:hover { text-decoration: underline; }
+.msel-options { max-height: 220px; overflow-y: auto; padding: 4px 0; }
+.msel-opt {
+  display: flex; align-items: center; gap: 9px;
+  padding: 7px 12px; cursor: pointer; font-size: 12px;
+  color: var(--text); transition: background 0.1s;
+}
+.msel-opt:hover { background: var(--surface2); }
+.msel-cb {
+  width: 14px; height: 14px; border-radius: 3px;
+  border: 1.5px solid var(--border2);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; background: var(--surface);
+  transition: all 0.15s;
+}
+.msel-opt.checked .msel-cb {
+  background: var(--navy); border-color: var(--navy);
+}
+.msel-opt.checked .msel-cb::after {
+  content: '✓'; font-size: 9px; color: #fff; font-weight: 700;
+}
+.msel-deal-group { padding: 4px 12px 2px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text3); }
+
+/* ── TABS ────────────────────────────────────────────────── */
+.tabs-bar {
+  background: var(--surface);
+  border-bottom: 2px solid var(--border);
+  padding: 0 28px;
+  display: flex; align-items: flex-end; gap: 2px;
+}
+.tab-btn {
+  padding: 13px 18px 11px;
+  background: transparent; border: none;
+  font-size: 13px; font-weight: 600; cursor: pointer;
+  color: var(--text2); border-bottom: 2px solid transparent;
+  margin-bottom: -2px; transition: color 0.15s, border-color 0.15s;
+  white-space: nowrap; letter-spacing: 0.1px;
+}
+.tab-btn:hover { color: var(--navy); }
+.tab-btn.active { color: var(--navy); border-bottom-color: var(--navy); }
+.tab-count {
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--surface3); color: var(--text2);
+  font-size: 10px; font-weight: 700;
+  min-width: 18px; height: 18px; border-radius: 9px; padding: 0 5px;
+  margin-left: 5px;
+}
+.tab-btn.active .tab-count { background: var(--navy); color: #fff; }
+
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+/* ── MAIN CONTENT ─────────────────────────────────────────── */
+.main { padding: 24px 28px; max-width: 1700px; margin: 0 auto; }
+
+/* ── SECTION HEADING ─────────────────────────────────────── */
+.sec-head {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 16px; margin-top: 28px;
+}
+.sec-head:first-child { margin-top: 0; }
+.sec-title {
+  font-size: 10px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 1.2px; color: var(--text3); white-space: nowrap;
+}
+.sec-rule { flex: 1; height: 1px; background: var(--border); }
+
+/* ── ALERT / WARNING BANNER ──────────────────────────────── */
+.alert {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 10px 14px; border-radius: var(--radius-sm);
+  font-size: 12px; margin-bottom: 18px;
+  border-left: 3px solid;
+}
+.alert.warn { background: #FFFBEB; border-color: #F59E0B; color: #92400E; }
+.alert.err  { background: #FEF2F2; border-color: #EF4444; color: #991B1B; }
+.alert-icon { font-size: 14px; flex-shrink: 0; }
+
+/* ── KPI CARDS ─────────────────────────────────────────────── */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(178px, 1fr));
+  gap: 14px;
+}
+.kpi-card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 14px 18px;
+  position: relative; overflow: hidden;
+}
+.kpi-card::before {
+  content: ''; position: absolute;
+  top: 0; left: 0; right: 0; height: 3px;
+  background: var(--navy);
+}
+.kpi-card.green::before { background: var(--green); }
+.kpi-card.blue::before  { background: var(--blue); }
+.kpi-card.amber::before { background: var(--amber); }
+.kpi-card.gray::before  { background: var(--border2); }
+
+.kpi-label {
+  font-size: 10px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.7px; color: var(--text3); margin-bottom: 8px;
+}
+.kpi-value {
+  font-size: 24px; font-weight: 700; color: var(--text);
+  font-family: 'Inter', -apple-system, sans-serif;
+  font-variant-numeric: tabular-nums; letter-spacing: -0.4px; line-height: 1.1;
+  margin-bottom: 4px;
+}
+.kpi-value.sm { font-size: 16px; letter-spacing: -0.2px; }
+.kpi-sub { font-size: 11px; color: var(--text2); }
+
+/* ── TTM vs LOI BLOCK ────────────────────────────────────── */
+.ttm-block {
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 22px 24px;
+}
+.cmp-grid {
+  display: grid; grid-template-columns: repeat(4,1fr);
+  gap: 14px; margin-bottom: 22px;
+}
+.cmp-card {
+  background: var(--surface2); border-radius: var(--radius-sm);
+  border: 1.5px solid var(--border);
+  padding: 18px; text-align: center;
+}
+.cmp-label {
+  font-size: 10px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.6px; color: var(--text3); margin-bottom: 10px;
+}
+.cmp-value {
+  font-size: 26px; font-weight: 700; letter-spacing: -0.4px; line-height: 1.1;
+  font-family: 'Inter', -apple-system, sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+.cmp-value.unset {
+  font-size: 12px; font-weight: 500; letter-spacing: 0; line-height: 1.5;
+  font-family: 'Inter', -apple-system, sans-serif;
+  color: var(--text3) !important;
+}
+.cmp-sub { font-size: 11px; color: var(--text2); margin-top: 5px; }
+
+/* ── CHART CARD ──────────────────────────────────────────── */
+.chart-row { display: grid; grid-template-columns: 2fr 1fr; gap: 14px; }
+.chart-card {
+  background: var(--surface); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 20px 22px;
+}
+.chart-card.full { grid-column: 1 / -1; }
+.chart-title { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 3px; }
+.chart-sub   { font-size: 11px; color: var(--text2); margin-bottom: 16px; }
+.chart-wrap  { position: relative; }
+
+/* ── DATA TABLE ─────────────────────────────────────────── */
+.tbl-card {
+  background: var(--surface); border-radius: var(--radius);
+  box-shadow: var(--shadow); overflow: hidden;
+}
+.tbl-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 15px 20px; border-bottom: 1px solid var(--border);
+  background: var(--surface2);
+}
+.tbl-head-title { font-size: 13px; font-weight: 700; color: var(--text); }
+.tbl-head-sub   { font-size: 11px; color: var(--text2); }
+.tbl-head-meta  { font-size: 11px; color: var(--text3); }
+
+table.dt { width: 100%; border-collapse: collapse; font-size: 12px; }
+table.dt th {
+  padding: 9px 16px; text-align: right;
+  font-size: 10px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.5px; color: var(--text3);
+  border-bottom: 1.5px solid var(--border);
+  background: var(--surface2); white-space: nowrap;
+}
+table.dt th.l, table.dt td.l { text-align: left; font-family: 'Inter', -apple-system, sans-serif; }
+table.dt td {
+  padding: 9px 16px; text-align: right;
+  border-bottom: 1px solid var(--border);
+  color: var(--text); white-space: nowrap;
+  font-family: 'SF Mono', 'Cascadia Code', 'Consolas', 'Courier New', monospace; font-size: 11.5px;
+}
+table.dt tr:last-child td { border-bottom: none; }
+table.dt tr:hover td { background: #F8FAFF; }
+table.dt td.bold  { font-weight: 600; }
+table.dt td.pos   { color: var(--green); font-weight: 600; }
+table.dt td.neg   { color: var(--red);   font-weight: 600; }
+
+/* ── YOY GRID ─────────────────────────────────────────────── */
+.yoy-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+
+/* YoY % badge */
+.yoy-badge {
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 2px 8px; border-radius: 3px;
+  font-family: 'Inter', -apple-system, sans-serif;
+  font-weight: 700; font-size: 11px; white-space: nowrap;
+}
+.yoy-badge.pos { background: var(--green-lt); color: var(--green); }
+.yoy-badge.neg { background: var(--red-lt);   color: var(--red);   }
+.partial-tag {
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 1px 5px; border-radius: 3px;
+  background: var(--amber-lt); color: var(--amber);
+  font-family: 'Inter', -apple-system, sans-serif;
+  font-size: 9px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.4px; vertical-align: middle; margin-left: 4px;
+}
+
+/* ── DEAL SUMMARY TABLE ───────────────────────────────────── */
+.deal-sum-tbl td.deal-name {
+  font-family: 'Inter', -apple-system, sans-serif;
+  font-weight: 600; font-size: 12.5px;
+}
+.deal-sum-tbl td.period-lbl {
+  font-family: 'Inter', -apple-system, sans-serif;
+  font-size: 11px; color: var(--text2);
+}
+
+/* ── LOI CONFIG PANEL ─────────────────────────────────────── */
+.loi-intro { font-size: 12px; color: var(--text2); margin-bottom: 20px; line-height: 1.7; max-width: 680px; }
+.loi-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(200px,1fr));
+  gap: 12px;
+}
+.loi-item {
+  background: var(--surface); border-radius: var(--radius-sm);
+  border: 1.5px solid var(--border); padding: 14px;
+  box-shadow: var(--shadow);
+}
+.loi-deal { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: var(--text3); margin-bottom: 8px; }
+.loi-row  { display: flex; align-items: center; gap: 5px; }
+.loi-curr { color: var(--text2); font-size: 13px; }
+.loi-inp {
+  flex: 1; background: var(--surface2);
+  border: 1.5px solid var(--border); color: var(--text);
+  padding: 5px 8px; border-radius: var(--radius-sm); font-size: 12px;
+  font-family: inherit; min-width: 0;
+}
+.loi-inp:focus { outline: none; border-color: var(--navy); }
+.loi-actions { display: flex; gap: 10px; margin-top: 20px; }
+
+/* ── BUTTONS (light theme) ────────────────────────────────── */
+.btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 7px 16px; border-radius: var(--radius-sm);
+  cursor: pointer; font-size: 12px; font-weight: 600;
+  transition: all 0.15s; border: 1.5px solid;
+  font-family: inherit; letter-spacing: 0.2px;
+}
+.btn.primary { background: var(--navy); color: #fff; border-color: var(--navy); }
+.btn.primary:hover { background: var(--navy-lt); border-color: var(--navy-lt); }
+.btn.outline { background: transparent; color: var(--navy); border-color: var(--border2); }
+.btn.outline:hover { background: var(--surface2); border-color: var(--navy); }
+
+/* ── FOOTER ───────────────────────────────────────────────── */
+.footer {
+  text-align: center; padding: 20px 28px;
+  font-size: 11px; color: var(--text3);
+  border-top: 1px solid var(--border); margin-top: 32px;
+}
+
+/* ── RESPONSIVE ──────────────────────────────────────────── */
+@media (max-width: 1100px) {
+  .chart-row { grid-template-columns: 1fr; }
+  .cmp-grid  { grid-template-columns: repeat(2,1fr); }
+}
+@media (max-width: 720px) {
+  .kpi-grid { grid-template-columns: repeat(2,1fr); }
+  .yoy-grid { grid-template-columns: 1fr; }
+  .main, .filter-bar, .header, .tabs-bar { padding-left: 14px; padding-right: 14px; }
+}
+
+/* ── TOAST ───────────────────────────────────────────────── */
+#toast {
+  position: fixed; bottom: 24px; right: 24px;
+  background: var(--navy); color: #fff;
+  padding: 10px 18px; border-radius: var(--radius-sm);
+  font-size: 13px; z-index: 500;
+  box-shadow: var(--shadow-md);
+  transition: opacity 0.3s; opacity: 0; pointer-events: none;
+}
+#toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+
+<!-- ── LOADING ──────────────────────────────────────────────── -->
+<div id="loadingOverlay">
+  <div class="loading-logo">
+    <img src="https://smilepartnersusa.com/wp-content/uploads/2025/10/SPUSA_Logo-1.png"
+         alt="SP USA" style="height:36px;object-fit:contain;"
+         onerror="this.style.display='none'">
+    <div class="loading-sep"></div>
+    <img src="https://www.stocadvisory.com/_next/image?url=%2Fstoc-main-logo-cropped.png&w=256&q=75"
+         alt="STOC Advisory" style="height:24px;object-fit:contain;"
+         onerror="this.style.display='none'">
+  </div>
+  <div class="spinner"></div>
+  <div class="loading-text">Connecting to Database…</div>
+  <div class="loading-detail" id="loadingDetail">Initializing…</div>
+</div>
+
+<!-- ── HEADER ─────────────────────────────────────────────── -->
+<header class="header">
+  <div class="header-left">
+    <img class="header-logo-sp"
+         src="https://smilepartnersusa.com/wp-content/uploads/2025/10/SPUSA_Logo-1.png"
+         alt="SP USA"
+         onerror="this.replaceWith(Object.assign(document.createElement('span'),{textContent:'SP USA',style:'font-size:18px;font-weight:900;color:#fff;letter-spacing:-0.5px'}))">
+    <div class="header-sep"></div>
+    <div>
+      <div class="header-title">Dental Practice Performance Dashboard</div>
+      <div class="header-sub">Production &amp; Collection Tracker · Live Data</div>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="status-pill">
+      <span class="dot" id="statusDot"></span>
+      <span id="lastUpdated">Connecting…</span>
+    </div>
+    <button class="hbtn ghost" onclick="refreshData()">↻ Refresh</button>
+    <img class="header-logo-stoc"
+         src="https://www.stocadvisory.com/_next/image?url=%2Fstoc-main-logo-cropped.png&w=256&q=75"
+         alt="STOC Advisory"
+         onerror="this.replaceWith(Object.assign(document.createElement('span'),{textContent:'STOC',style:'font-size:13px;font-weight:700;color:rgba(255,255,255,0.7)'}))">
+  </div>
+</header>
+
+<!-- ── FILTER BAR ──────────────────────────────────────────── -->
+<div class="filter-bar">
+  <!-- Searchable Deal Select -->
+  <div class="filter-group">
+    <span class="filter-label">Deal</span>
+    <div class="csel" id="dealCsel">
+      <div class="csel-trigger" onclick="toggleCsel('dealCsel')">
+        <span id="dealCselLabel">All Deals</span>
+        <span class="csel-arrow">▼</span>
+      </div>
+      <div class="csel-dropdown">
+        <input class="csel-search" type="text" placeholder="Search deals…" oninput="filterCselOpts(this,'dealCsel')" autocomplete="off">
+        <div class="csel-options" id="dealCselOpts">
+          <div class="csel-opt selected" data-value="" onclick="selectCsel('dealCsel','','All Deals')">All Deals</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Multi-select Locations -->
+  <div class="filter-group">
+    <span class="filter-label">Location</span>
+    <div class="msel" id="locationMsel">
+      <div class="msel-trigger" onclick="toggleMsel('locationMsel')">
+        <span id="locationMselLabel">All Locations</span>
+        <span class="csel-arrow">▼</span>
+      </div>
+      <div class="msel-dropdown">
+        <div class="msel-head">
+          <span class="msel-head-label">Select Locations</span>
+          <span class="msel-clear" onclick="clearMsel('locationMsel')">Clear all</span>
+        </div>
+        <div class="msel-options" id="locationMselOpts"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Date Range -->
+  <div class="filter-group">
+    <span class="filter-label">From</span>
+    <input type="date" id="filterStart" onchange="onFilterChange()">
+  </div>
+  <div class="filter-group">
+    <span class="filter-label">To</span>
+    <input type="date" id="filterEnd" onchange="onFilterChange()">
+  </div>
+
+  <!-- View Toggle -->
+  <div class="filter-group">
+    <span class="filter-label">View</span>
+    <div class="toggle-group">
+      <button class="toggle-btn active" id="btnMonthly" onclick="setView('monthly')">Monthly</button>
+      <button class="toggle-btn"        id="btnWeekly"  onclick="setView('weekly')">Weekly</button>
+    </div>
+  </div>
+
+  <div class="filter-bar-right" id="recordCount"></div>
+</div>
+
+<!-- ── TABS BAR ────────────────────────────────────────────── -->
+<div class="tabs-bar">
+  <button class="tab-btn active" data-tab="overview"  onclick="switchTab('overview')">Overview</button>
+  <button class="tab-btn"        data-tab="trends"    onclick="switchTab('trends')">Trends</button>
+  <button class="tab-btn"        data-tab="yoy"       onclick="switchTab('yoy')">YoY Analysis</button>
+  <button class="tab-btn"        data-tab="table"     onclick="switchTab('table')">Data Table</button>
+  <button class="tab-btn"        data-tab="loi"       onclick="switchTab('loi')">LOI Config</button>
+</div>
+
+<!-- ── MAIN CONTENT ────────────────────────────────────────── -->
+<main class="main">
+
+  <!-- Alerts area -->
+  <div id="alertArea"></div>
+
+  <!-- ════════════════════════════════════════════
+       TAB: OVERVIEW
+       ════════════════════════════════════════════ -->
+  <div id="tab-overview" class="tab-panel active">
+
+    <div class="sec-head"><span class="sec-title">Key Performance Indicators</span><span class="sec-rule"></span></div>
+    <div class="kpi-grid" style="margin-bottom:24px">
+      <div class="kpi-card">
+        <div class="kpi-label">TTM Revenue</div>
+        <div class="kpi-value" id="kpiTTM">—</div>
+        <div class="kpi-sub" id="kpiTTMPeriod">Trailing 12 months</div>
+      </div>
+      <div class="kpi-card blue">
+        <div class="kpi-label">Total Charge Amount</div>
+        <div class="kpi-value" id="kpiCharge">—</div>
+        <div class="kpi-sub">Selected period</div>
+      </div>
+      <div class="kpi-card green">
+        <div class="kpi-label">Total Revenue</div>
+        <div class="kpi-value" id="kpiCollections">—</div>
+        <div class="kpi-sub">Selected period</div>
+      </div>
+      <div class="kpi-card amber">
+        <div class="kpi-label">Avg Production / Encounter</div>
+        <div class="kpi-value" id="kpiProdPerEnc">—</div>
+        <div class="kpi-sub">Charges ÷ encounters</div>
+      </div>
+      <div class="kpi-card amber">
+        <div class="kpi-label">Avg Production / Procedure</div>
+        <div class="kpi-value" id="kpiProdPerProc">—</div>
+        <div class="kpi-sub">Charges ÷ procedures</div>
+      </div>
+      <div class="kpi-card blue">
+        <div class="kpi-label">Encounters / Day</div>
+        <div class="kpi-value" id="kpiEncPerDay">—</div>
+        <div class="kpi-sub">Per working day</div>
+      </div>
+      <div class="kpi-card blue">
+        <div class="kpi-label">Avg Daily Production</div>
+        <div class="kpi-value" id="kpiAvgDaily">—</div>
+        <div class="kpi-sub" id="kpiAvgDailySub">Per working day</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Patient Encounters</div>
+        <div class="kpi-value" id="kpiEncounters">—</div>
+        <div class="kpi-sub">Total encounters</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Procedures / Txns</div>
+        <div class="kpi-value" id="kpiProcedures">—</div>
+        <div class="kpi-sub">Total procedures</div>
+      </div>
+      <div class="kpi-card gray">
+        <div class="kpi-label">Active Locations</div>
+        <div class="kpi-value" id="kpiLocations">—</div>
+        <div class="kpi-sub" id="kpiLocationsSub">In selected view</div>
+      </div>
+      <div class="kpi-card gray">
+        <div class="kpi-label">Latest Data Point</div>
+        <div class="kpi-value sm" id="kpiLatestDate">—</div>
+        <div class="kpi-sub" id="kpiLatestDateSub">Most recent entry</div>
+      </div>
+    </div>
+
+    <div class="sec-head"><span class="sec-title">Deal Summary — TTM vs LOI</span><span class="sec-rule"></span></div>
+    <div class="tbl-card" style="margin-bottom:24px">
+      <div style="overflow-x:auto">
+        <table class="dt deal-sum-tbl">
+          <thead>
+            <tr>
+              <th class="l">Deal</th>
+              <th class="l">TTM Period</th>
+              <th>Current TTM</th>
+              <th>LOI Revenue</th>
+              <th>$ Variance</th>
+              <th>% vs LOI</th>
+              <th class="l">Latest Data</th>
+            </tr>
+          </thead>
+          <tbody id="dealSummaryBody">
+            <tr><td colspan="7" style="text-align:center;color:var(--text3);padding:20px;">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="sec-head"><span class="sec-title">Portfolio TTM vs LOI</span><span class="sec-rule"></span></div>
+    <div class="ttm-block">
+      <div class="cmp-grid">
+        <div class="cmp-card">
+          <div class="cmp-label">TTM Revenue</div>
+          <div class="cmp-value" id="cmpTTM" style="color:var(--green)">—</div>
+          <div class="cmp-sub" id="cmpTTMPeriod">Most recent 12 months</div>
+        </div>
+        <div class="cmp-card">
+          <div class="cmp-label">LOI Revenue</div>
+          <div class="cmp-value" id="cmpLOI" style="color:var(--navy)">—</div>
+          <div class="cmp-sub">From LOI Config tab (editable)</div>
+        </div>
+        <div class="cmp-card">
+          <div class="cmp-label">$ Variance (TTM − LOI)</div>
+          <div class="cmp-value" id="cmpVarD">—</div>
+          <div class="cmp-sub" id="cmpVarDSub">Set LOI values to enable</div>
+        </div>
+        <div class="cmp-card">
+          <div class="cmp-label">% Variance</div>
+          <div class="cmp-value" id="cmpVarP">—</div>
+          <div class="cmp-sub">TTM vs LOI</div>
+        </div>
+      </div>
+      <div class="chart-title" style="margin-bottom:12px;">Rolling TTM Trend</div>
+      <div class="chart-wrap"><canvas id="ttmTrendChart" height="170"></canvas></div>
+    </div>
+
+  </div><!-- /tab-overview -->
+
+  <!-- ════════════════════════════════════════════
+       TAB: TRENDS
+       ════════════════════════════════════════════ -->
+  <div id="tab-trends" class="tab-panel">
+    <div class="sec-head">
+      <span class="sec-title" id="trendLabel">Monthly Trend</span>
+      <span class="sec-rule"></span>
+    </div>
+    <div class="chart-row" style="margin-bottom:16px">
+      <div class="chart-card full">
+        <div class="chart-title" id="mainChartTitle">Monthly Revenue</div>
+        <div class="chart-sub" id="mainChartSub">Bars = Revenue · Line = Charge Amount</div>
+        <div class="chart-wrap"><canvas id="mainChart" height="260"></canvas></div>
+      </div>
+    </div>
+    <div class="chart-card full">
+      <div class="chart-title">Rolling TTM Revenue</div>
+      <div class="chart-sub">Trailing 12-month sum, updated each month · dashed line = LOI target (if set)</div>
+      <div class="chart-wrap"><canvas id="ttmTrendChart2" height="220"></canvas></div>
+    </div>
+  </div><!-- /tab-trends -->
+
+  <!-- ════════════════════════════════════════════
+       TAB: YOY ANALYSIS
+       ════════════════════════════════════════════ -->
+  <div id="tab-yoy" class="tab-panel">
+    <div class="sec-head"><span class="sec-title">Year-over-Year Growth · Most Recent 5 Months</span><span class="sec-rule"></span></div>
+    <div class="yoy-grid" style="margin-bottom:20px">
+      <div class="chart-card">
+        <div class="chart-title">YoY Revenue</div>
+        <div class="chart-sub">Current year (green) vs. prior year (navy) — same calendar month</div>
+        <div class="chart-wrap"><canvas id="yoyChart" height="260"></canvas></div>
+      </div>
+      <div class="tbl-card">
+        <div class="tbl-head">
+          <div>
+            <div class="tbl-head-title">YoY Comparison</div>
+            <div class="tbl-head-sub">Revenue — most recent 5 months</div>
+          </div>
+        </div>
+        <div style="overflow-x:auto">
+          <table class="dt">
+            <thead>
+              <tr>
+                <th class="l">Month</th>
+                <th>Current Yr</th>
+                <th>Prior Yr</th>
+                <th>$ Change</th>
+                <th>% Growth</th>
+              </tr>
+            </thead>
+            <tbody id="yoyTableBody">
+              <tr><td class="l" colspan="5" style="text-align:center;color:var(--text3);padding:20px;">Loading…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <!-- Extended YoY table — all available months -->
+    <div class="tbl-card">
+      <div class="tbl-head">
+        <div>
+          <div class="tbl-head-title">Full YoY History</div>
+          <div class="tbl-head-sub">All months with prior-year comparison available</div>
+        </div>
+        <div class="tbl-head-meta" id="yoyHistMeta"></div>
+      </div>
+      <div style="overflow-x:auto">
+        <table class="dt">
+          <thead>
+            <tr>
+              <th class="l">Month</th>
+              <th>Current Yr</th>
+              <th>Prior Yr</th>
+              <th>$ Change</th>
+              <th>% Growth</th>
+            </tr>
+          </thead>
+          <tbody id="yoyHistBody">
+            <tr><td colspan="5" style="text-align:center;color:var(--text3);padding:20px;">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div><!-- /tab-yoy -->
+
+  <!-- ════════════════════════════════════════════
+       TAB: DATA TABLE
+       ════════════════════════════════════════════ -->
+  <div id="tab-table" class="tab-panel">
+    <div class="sec-head"><span class="sec-title" id="perfTableSectionLabel">Monthly Performance Detail</span><span class="sec-rule"></span></div>
+    <div class="tbl-card">
+      <div class="tbl-head">
+        <div>
+          <div class="tbl-head-title" id="perfTableTitle">Monthly Summary</div>
+          <div class="tbl-head-sub">All periods · newest first</div>
+        </div>
+        <div class="tbl-head-meta" id="perfTableMeta"></div>
+      </div>
+      <div style="overflow-x:auto">
+        <table class="dt">
+          <thead id="perfTableHead"></thead>
+          <tbody id="perfTableBody">
+            <tr><td colspan="7" style="text-align:center;color:var(--text3);padding:28px;">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <!-- Revenue Period Analysis: T, T-1, T-2 × YoY per location -->
+    <div class="sec-head" style="margin-top:28px"><span class="sec-title" id="periodSpotlightLabel">Revenue Period Analysis · T / T-1 / T-2</span><span class="sec-rule"></span></div>
+    <div class="tbl-card" style="margin-bottom:24px">
+      <div class="tbl-head">
+        <div>
+          <div class="tbl-head-title">Rolling Period vs Prior Year — by Location</div>
+          <div class="tbl-head-sub" id="periodSpotlightSub">3 most recent periods · current year vs same period prior year</div>
+        </div>
+        <div class="tbl-head-meta" id="periodSpotlightMeta"></div>
+      </div>
+      <div style="overflow-x:auto">
+        <table class="dt">
+          <thead id="periodSpotlightHead"></thead>
+          <tbody id="periodSpotlightBody">
+            <tr><td colspan="10" style="text-align:center;color:var(--text3);padding:20px;">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div><!-- /tab-table -->
+
+  <!-- ════════════════════════════════════════════
+       TAB: LOI CONFIG
+       ════════════════════════════════════════════ -->
+  <div id="tab-loi" class="tab-panel">
+    <div class="sec-head"><span class="sec-title">LOI Configuration</span><span class="sec-rule"></span></div>
+    <p class="loi-intro">
+      Enter the LOI-period revenue figure for each deal.
+      These are the baseline revenue figures cited during due diligence, used to compare
+      against TTM actuals in the Overview tab. Values are saved in your browser's local storage
+      and persist between sessions.
+    </p>
+    <div class="loi-grid" id="loiGrid"></div>
+    <div class="loi-actions">
+      <button class="btn primary" onclick="saveLOI()">💾 Save LOI Values</button>
+      <button class="btn outline"  onclick="switchTab('overview')">← Back to Overview</button>
+    </div>
+  </div><!-- /tab-loi -->
+
+</main>
+
+<footer class="footer">
+  SP USA Dental Practice Dashboard · Built by STOC Advisory ·
+  Data sourced from Google Sheets Import tabs · No raw data upload required ·
+  Refreshes on demand
+</footer>
+
+<div id="toast"></div>
+
+<!-- ════════════════════════════════════════════════════════════
+     JAVASCRIPT
+     ════════════════════════════════════════════════════════════ -->
+<script>
+'use strict';
+
+/* ════════════════════════════════════════════════════════════
+   CONFIGURATION
+   ════════════════════════════════════════════════════════════ */
+const SHEET_ID = '1mZEY5qvUlpsL4xYANPeSTxp4_icm8C3Yw4qgdPTCCNI';
+
+/*
+  Add new deals here — tab name must match the Import tab name exactly.
+  granularity: 'daily' = one row per working day | 'monthly' = one row per calendar month
+  Tabs with no data will be silently skipped (shown in status bar if they fail).
+*/
+const DEALS = [
+  { name: 'Lakeview',               tab: 'Import-Lakeview',                   granularity: 'daily'   },
+  { name: 'Forest Dental',          tab: 'Import-Forest Dental',              granularity: 'daily'   },
+  { name: 'Kreit',                  tab: 'Import-Kreit',                      granularity: 'daily'   },
+  { name: 'Atlanta Endo',           tab: 'Import-Atlanta Endo',               granularity: 'monthly' },
+  { name: 'Favia',                  tab: 'Import-Favia',                      granularity: 'daily'   },
+  { name: 'Blankenship',            tab: 'Import-Blankenship',                granularity: 'daily'   },
+  { name: 'Buford',                 tab: 'Import-Buford',                     granularity: 'daily'   },
+  { name: 'B Hills',                tab: 'Import-B Hills',                    granularity: 'daily'   },
+  { name: 'Town',                   tab: 'Import-Town',                       granularity: 'daily'   },
+  { name: 'Kedron',                 tab: 'Import-Kedron',                     granularity: 'daily'   },
+  { name: 'Grace Dental',           tab: 'Import-Grace Dental',               granularity: 'daily'   },
+  { name: 'Dental Health & Beauty', tab: 'Import-Dental Health and Beauty',   granularity: 'daily'   },
+  { name: 'AC Dentistry',           tab: 'Import-AC Dentistry',               granularity: 'daily'   },
+  { name: 'Solon & Mentor',         tab: 'Import-Solon and Mentor',           granularity: 'daily'   },
+];
+
+/* Column synonym map — checked in order, first match wins (case-insensitive after normMap) */
+const COL_MAP = {
+  adjCollections: ['Adjusted Collections', 'Revenue', 'Adj Collections', 'Adjusted Collection'],
+  chargeAmount:   ['Charge Amount', 'Charges', 'Total Charges', 'Charge'],
+  procedures:     ['Procedures', 'Transactions', 'Procedure Count'],
+  encounters:     ['Encounters', 'Patient Encounters', 'Patients'],
+  adjPct:         ['Adj. Collection %', 'Adj Collection %', 'Collection %', 'Adj. Collections %'],
+};
+
+const MO_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const MO_FULL  = ['January','February','March','April','May','June','July',
+                  'August','September','October','November','December'];
+
+/* ════════════════════════════════════════════════════════════
+   STATE
+   ════════════════════════════════════════════════════════════ */
+let allData      = [];
+let filteredData = [];
+let currentView  = 'monthly';
+let loiConfig    = {};
+let charts       = {};
+let loadErrors   = [];
+let loadedDeals  = [];
+let selectedDeal = '';          // '' = all
+let selectedLocs = new Set();   // empty = all
+
+/* ════════════════════════════════════════════════════════════
+   DATA FETCHING
+   ════════════════════════════════════════════════════════════ */
+function csvUrl(tab) {
+  return `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(tab)}`;
+}
+
+async function fetchTab(deal) {
+  const res = await fetch(csvUrl(deal.tab));
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const text = await res.text();
+  if (text.trim().startsWith('<!') || text.includes('google.visualization')) {
+    throw new Error('Tab not found or sheet not public');
+  }
+  const { data } = Papa.parse(text, { header: true, skipEmptyLines: true });
+  const rows = data.map(r => normalizeRow(r, deal)).filter(
+    r => r && r.year && r.monthNum && (r.chargeAmount > 0 || r.adjCollections > 0)
+  );
+  return rows;
+}
+
+function buildNormMap(row) {
+  const m = {};
+  for (const k of Object.keys(row)) m[k.trim().toLowerCase()] = k;
+  return m;
+}
+
+function getCol(row, aliases, nm) {
+  for (const a of aliases) {
+    const orig = nm[a.trim().toLowerCase()];
+    if (orig !== undefined) {
+      const v = row[orig];
+      if (v !== undefined && v !== null && v !== '') return v;
+    }
+  }
+  return null;
+}
+
+function parseNum(v) {
+  if (v == null || v === '') return 0;
+  const n = parseFloat(String(v).replace(/[$,%\s]/g,'').replace(/,/g,''));
+  return isNaN(n) ? 0 : n;
+}
+
+function normalizeRow(raw, deal) {
+  try {
+    const nm = buildNormMap(raw);
+    const dateKey = nm['date'];
+    const dateStr = dateKey ? (raw[dateKey] || '') : '';
+    let dateObj = null, year = null, monthNum = null, month = null, week = null;
+
+    const pts = dateStr.split('/');
+    if (pts.length === 3) {
+      const [m, d, y] = pts.map(Number);
+      if (!isNaN(m) && !isNaN(d) && !isNaN(y) && y > 1900) {
+        dateObj = new Date(y, m-1, d);
+        year = y; monthNum = m; month = MO_FULL[m-1];
+      }
+    }
+    if (!year)     year     = parseInt(raw[nm['year']]  || '', 10) || null;
+    if (!month)    month    = (raw[nm['month']] || '').trim() || null;
+    if (!monthNum && month) monthNum = MO_FULL.indexOf(month) + 1 || null;
+    week = parseInt(raw[nm['week']] || '', 10) || null;
+
+    return {
+      deal:          deal.name,
+      location:      (raw[nm['location']] || '').trim(),
+      date:  dateObj, dateStr, year, monthNum, month, week,
+      chargeAmount:   parseNum(getCol(raw, COL_MAP.chargeAmount,   nm)),
+      adjCollections: parseNum(getCol(raw, COL_MAP.adjCollections, nm)),
+      procedures:     parseNum(getCol(raw, COL_MAP.procedures,     nm)),
+      encounters:     parseNum(getCol(raw, COL_MAP.encounters,     nm)),
+      granularity:    deal.granularity,
+    };
+  } catch { return null; }
+}
+
+async function loadAllData() {
+  allData = []; loadErrors = []; loadedDeals = [];
+  let settled = 0;
+  const total = DEALS.length;
+  const det = document.getElementById('loadingDetail');
+  await Promise.allSettled(
+    DEALS.map(d =>
+      fetchTab(d)
+        .then(rows => {
+          if (rows.length > 0) { allData.push(...rows); loadedDeals.push(d.name); }
+        })
+        .catch(err => { loadErrors.push({ deal: d.name, error: err.message }); })
+        .finally(() => { settled++; if (det) det.textContent = `Loading… ${settled} / ${total} tabs`; })
+    )
+  );
+}
+
+/* ════════════════════════════════════════════════════════════
+   CUSTOM DROPDOWN COMPONENTS
+   ════════════════════════════════════════════════════════════ */
+
+/* ─ Searchable single-select for Deal ─ */
+function toggleCsel(id) {
+  const el = document.getElementById(id);
+  const isOpen = el.classList.contains('open');
+  document.querySelectorAll('.csel.open,.msel.open').forEach(e => e.classList.remove('open'));
+  if (!isOpen) {
+    el.classList.add('open');
+    el.querySelector('.csel-search')?.focus();
+  }
+}
+function filterCselOpts(input, id) {
+  const q = input.value.toLowerCase();
+  document.querySelectorAll(`#${id} .csel-opt`).forEach(opt => {
+    opt.classList.toggle('hidden', q && !opt.textContent.toLowerCase().includes(q));
+  });
+}
+function selectCsel(id, value, label) {
+  selectedDeal = value;
+  document.getElementById(id + 'Label').textContent = label;
+  document.querySelectorAll(`#${id} .csel-opt`).forEach(o => o.classList.remove('selected'));
+  document.querySelector(`#${id} .csel-opt[data-value="${value}"]`)?.classList.add('selected');
+  document.getElementById(id).classList.remove('open');
+  // Reset location selection when deal changes
+  selectedLocs.clear();
+  rebuildLocationDropdown();
+  onFilterChange();
+}
+function buildDealDropdown() {
+  const deals = [...new Set(allData.map(r => r.deal))].sort();
+  const opts  = document.getElementById('dealCselOpts');
+  const existing = opts.querySelector('[data-value=""]');
+  opts.innerHTML = '';
+  opts.appendChild(existing);
+  deals.forEach(d => {
+    const div = document.createElement('div');
+    div.className = 'csel-opt' + (d === selectedDeal ? ' selected' : '');
+    div.dataset.value = d;
+    div.textContent = d;
+    div.onclick = () => selectCsel('dealCsel', d, d);
+    opts.appendChild(div);
+  });
+}
+
+/* ─ Multi-select for Location ─ */
+function toggleMsel(id) {
+  const el = document.getElementById(id);
+  const isOpen = el.classList.contains('open');
+  document.querySelectorAll('.csel.open,.msel.open').forEach(e => e.classList.remove('open'));
+  if (!isOpen) el.classList.add('open');
+}
+function clearMsel(id) {
+  selectedLocs.clear();
+  document.querySelectorAll(`#${id}Opts .msel-opt`).forEach(o => o.classList.remove('checked'));
+  updateMselLabel();
+  onFilterChange();
+}
+function toggleMselOpt(loc) {
+  if (selectedLocs.has(loc)) selectedLocs.delete(loc);
+  else selectedLocs.add(loc);
+  const opt = document.querySelector(`#locationMselOpts [data-loc="${CSS.escape(loc)}"]`);
+  opt?.classList.toggle('checked', selectedLocs.has(loc));
+  updateMselLabel();
+  onFilterChange();
+}
+function updateMselLabel() {
+  const lbl = document.getElementById('locationMselLabel');
+  if (selectedLocs.size === 0) lbl.innerHTML = 'All Locations';
+  else lbl.innerHTML = `<span class="msel-badge">${selectedLocs.size}</span> ${selectedLocs.size === 1 ? [...selectedLocs][0] : 'locations selected'}`;
+}
+function rebuildLocationDropdown() {
+  const pool = selectedDeal ? allData.filter(r => r.deal === selectedDeal) : allData;
+  // Group by deal for display
+  const byDeal = {};
+  pool.forEach(r => {
+    if (!r.location) return;
+    if (!byDeal[r.deal]) byDeal[r.deal] = new Set();
+    byDeal[r.deal].add(r.location);
+  });
+  const container = document.getElementById('locationMselOpts');
+  container.innerHTML = '';
+  const deals = Object.keys(byDeal).sort();
+  deals.forEach(deal => {
+    if (deals.length > 1) {
+      const grp = document.createElement('div');
+      grp.className = 'msel-deal-group';
+      grp.textContent = deal;
+      container.appendChild(grp);
+    }
+    [...byDeal[deal]].sort().forEach(loc => {
+      const div = document.createElement('div');
+      div.className = 'msel-opt' + (selectedLocs.has(loc) ? ' checked' : '');
+      div.dataset.loc = loc;
+      div.innerHTML = `<span class="msel-cb"></span>${loc}`;
+      div.onclick = () => toggleMselOpt(loc);
+      container.appendChild(div);
+    });
+  });
+  updateMselLabel();
+}
+
+/* Close dropdowns when clicking outside */
+document.addEventListener('click', e => {
+  if (!e.target.closest('.csel') && !e.target.closest('.msel')) {
+    document.querySelectorAll('.csel.open,.msel.open').forEach(el => el.classList.remove('open'));
+  }
+});
+
+/* ════════════════════════════════════════════════════════════
+   FILTERS & STATE
+   ════════════════════════════════════════════════════════════ */
+function getFilters() {
+  return {
+    deal:  selectedDeal,
+    locs:  selectedLocs,
+    start: document.getElementById('filterStart').value,
+    end:   document.getElementById('filterEnd').value,
+  };
+}
+
+/* Current in-progress calendar month — excluded everywhere so the dashboard
+   only ever reflects months with full data. */
+const _NOW = new Date();
+const CURRENT_Y = _NOW.getFullYear();
+const CURRENT_M = _NOW.getMonth() + 1;
+function isFullDataMonth(r) {
+  // A row belongs to a "full" month if it is not in the current, still-running month.
+  return !(r.year === CURRENT_Y && r.monthNum === CURRENT_M);
+}
+
+function onFilterChange() {
+  const f = getFilters();
+  filteredData = allData.filter(r => {
+    if (!isFullDataMonth(r)) return false;   // drop the in-progress month globally
+    if (f.deal && r.deal !== f.deal) return false;
+    if (f.locs.size > 0 && !f.locs.has(r.location)) return false;
+    if (f.start && r.date && r.date < new Date(f.start + 'T00:00:00')) return false;
+    if (f.end   && r.date && r.date > new Date(f.end   + 'T23:59:59')) return false;
+    return true;
+  });
+  document.getElementById('recordCount').textContent =
+    `${filteredData.length.toLocaleString()} records`;
+  renderDashboard();
+}
+
+function setView(v) {
+  currentView = v;
+  document.getElementById('btnMonthly').classList.toggle('active', v === 'monthly');
+  document.getElementById('btnWeekly').classList.toggle('active', v === 'weekly');
+  const lbl = v === 'monthly' ? 'Monthly' : 'Weekly';
+  document.getElementById('trendLabel').textContent     = lbl + ' Trend';
+  document.getElementById('mainChartTitle').textContent = lbl + ' Revenue';
+  document.getElementById('mainChartSub').textContent   = `Bars = Revenue · Line = Charge Amount — aggregated by ${v.toLowerCase()} period`;
+  document.getElementById('perfTableSectionLabel').textContent = lbl + ' Performance Detail';
+  document.getElementById('perfTableTitle').textContent = lbl + ' Summary';
+  const locSub = document.getElementById('locTableSub');
+  if (locSub) locSub.textContent = `Sorted by Revenue · ${lbl.toLowerCase()} view · filtered period`;
+  renderDashboard();
+}
+
+/* ════════════════════════════════════════════════════════════
+   TAB NAVIGATION
+   ════════════════════════════════════════════════════════════ */
+function switchTab(id) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + id)?.classList.add('active');
+  document.querySelector(`[data-tab="${id}"]`)?.classList.add('active');
+  // Disable Monthly/Weekly toggle on YoY tab — YoY is always monthly
+  const isYoy = id === 'yoy';
+  const tg = document.querySelector('.toggle-group');
+  if (tg) {
+    tg.style.opacity = isYoy ? '0.35' : '1';
+    tg.style.pointerEvents = isYoy ? 'none' : '';
+    tg.title = isYoy ? 'YoY Analysis always uses monthly data' : '';
+  }
+  // Trigger chart resize after tab switch (Chart.js needs this on hidden canvases)
+  setTimeout(() => Object.values(charts).forEach(c => c?.resize?.()), 50);
+}
+
+/* ════════════════════════════════════════════════════════════
+   AGGREGATION
+   ════════════════════════════════════════════════════════════ */
+function aggregateMonthly(data) {
+  const map = {};
+  data.forEach(r => {
+    if (!r.year || !r.monthNum) return;
+    const k = `${r.year}-${String(r.monthNum).padStart(2,'0')}`;
+    if (!map[k]) map[k] = {
+      key: k, year: r.year, monthNum: r.monthNum, month: r.month,
+      label: `${MO_SHORT[r.monthNum-1]} ${r.year}`,
+      chargeAmount: 0, adjCollections: 0, procedures: 0, encounters: 0,
+      daySet: new Set(), locSet: new Set(),
+    };
+    const m = map[k];
+    m.chargeAmount   += r.chargeAmount;
+    m.adjCollections += r.adjCollections;
+    m.procedures     += r.procedures;
+    m.encounters     += r.encounters;
+    if (r.date)     m.daySet.add(r.date.toDateString());
+    if (r.location) m.locSet.add(r.location);
+  });
+  return Object.values(map).sort((a,b) => a.key.localeCompare(b.key)).map(m => ({
+    ...m, days: m.daySet.size, locations: m.locSet.size,
+    collRate: m.chargeAmount > 0 ? m.adjCollections / m.chargeAmount : null,
+  }));
+}
+
+function aggregateWeekly(data) {
+  const map = {};
+  data.forEach(r => {
+    if (!r.year || !r.week) return;
+    const k = `${r.year}-${String(r.week).padStart(2,'0')}`;
+    if (!map[k]) map[k] = {
+      key: k, year: r.year, week: r.week,
+      label: `W${r.week} ${r.year}`,
+      chargeAmount: 0, adjCollections: 0, procedures: 0, encounters: 0,
+      daySet: new Set(), locSet: new Set(),
+    };
+    const w = map[k];
+    w.chargeAmount   += r.chargeAmount;
+    w.adjCollections += r.adjCollections;
+    w.procedures     += r.procedures;
+    w.encounters     += r.encounters;
+    if (r.date)     w.daySet.add(r.date.toDateString());
+    if (r.location) w.locSet.add(r.location);
+  });
+  return Object.values(map).sort((a,b) => a.key.localeCompare(b.key)).map(w => ({
+    ...w, days: w.daySet.size, locations: w.locSet.size,
+    collRate: w.chargeAmount > 0 ? w.adjCollections / w.chargeAmount : null,
+  }));
+}
+
+/* ════════════════════════════════════════════════════════════
+   TTM & YOY
+   ════════════════════════════════════════════════════════════ */
+function calcTTM(monthly) {
+  if (!monthly.length) return null;
+  const sorted = [...monthly].sort((a,b) => a.key.localeCompare(b.key));
+  const endIdx = sorted.length - 1;
+  const startIdx = Math.max(0, endIdx - 11);
+  const window = sorted.slice(startIdx, endIdx + 1);
+  return {
+    amount: window.reduce((s,m) => s + m.adjCollections, 0),
+    months: window.length,
+    isPartial: window.length < 12,
+    startLabel: window[0].label,
+    endLabel:   window[window.length-1].label,
+    periodLabel:`${window[0].label} – ${window[window.length-1].label}`,
+  };
+}
+
+function calcRollingTTM(monthly) {
+  const sorted = [...monthly].sort((a,b) => a.key.localeCompare(b.key));
+  const out = [];
+  for (let i = 11; i < sorted.length; i++) {
+    const w = sorted.slice(i-11, i+1);
+    out.push({ label: sorted[i].label, key: sorted[i].key, amount: w.reduce((s,m) => s + m.adjCollections, 0) });
+  }
+  return out;
+}
+
+function calcYoY(monthly, n = 5) {
+  const sorted = [...monthly].sort((a,b) => b.key.localeCompare(a.key));
+  return sorted.slice(0, n).reverse().map(curr => {
+    const prevKey = `${curr.year-1}-${String(curr.monthNum).padStart(2,'0')}`;
+    const prev    = monthly.find(m => m.key === prevKey);
+    const change  = prev ? curr.adjCollections - prev.adjCollections : null;
+    const pctChg  = prev && prev.adjCollections > 0 ? change / prev.adjCollections : null;
+    return { key: curr.key, month: `${MO_SHORT[curr.monthNum-1]} ${curr.year}`, current: curr.adjCollections, prior: prev?.adjCollections ?? null, change, pctChg };
+  });
+}
+
+function calcYoYFull(monthly) {
+  const sorted = [...monthly].sort((a,b) => b.key.localeCompare(a.key));
+  return sorted.map(curr => {
+    const prevKey = `${curr.year-1}-${String(curr.monthNum).padStart(2,'0')}`;
+    const prev    = monthly.find(m => m.key === prevKey);
+    if (!prev) return null;
+    const change = curr.adjCollections - prev.adjCollections;
+    const pctChg = prev.adjCollections > 0 ? change / prev.adjCollections : null;
+    return { key: curr.key, month: `${MO_SHORT[curr.monthNum-1]} ${curr.year}`, current: curr.adjCollections, prior: prev.adjCollections, change, pctChg };
+  }).filter(Boolean);
+}
+
+function isCurrentMonthKey(key) {
+  if (!key) return false;
+  const now = new Date();
+  return key === `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+}
+
+/* ════════════════════════════════════════════════════════════
+   LOI CONFIG
+   ════════════════════════════════════════════════════════════ */
+const LOI_KEY = 'sp_dental_loi_v2';
+function loadLOI() {
+  try { loiConfig = JSON.parse(localStorage.getItem(LOI_KEY) || '{}'); } catch { loiConfig = {}; }
+}
+
+/* ── Auto-fetch LOI values from the "Summary" sheet tab ─────────────── */
+async function fetchSummaryLOI() {
+  try {
+    const url = csvUrl('Summary');
+    const res = await fetch(url);
+    if (!res.ok) return;
+    const text = await res.text();
+    if (text.trim().startsWith('<!') || text.includes('google.visualization')) return;
+
+    const { data } = Papa.parse(text, { header: false, skipEmptyLines: false });
+
+    // Locate the header row (the one containing "LOI" or "loi period" / "loi revenue")
+    let headerIdx = -1;
+    let colDeal = -1, colLOIRev = -1, colLOIPeriod = -1, colQoERev = -1, colQoEPeriod = -1, colCurRev = -1;
+    for (let i = 0; i < Math.min(data.length, 15); i++) {
+      const row = (data[i] || []).map(c => (c || '').toLowerCase().trim());
+      const hasLOI = row.some(c => c.includes('loi'));
+      if (hasLOI) {
+        headerIdx = i;
+        colDeal      = row.findIndex(c => c.includes('client') || c.includes('deal'));
+        if (colDeal === -1) colDeal = row.findIndex(c => c.length > 1 && !c.includes('loi') && !c.includes('qoe') && !c.includes('revenue') && !c.includes('var') && i === 0 ? false : c.length > 0);
+        colLOIPeriod = row.findIndex(c => c.includes('loi') && c.includes('period'));
+        colLOIRev    = row.findIndex(c => c.includes('loi') && (c.includes('revenue') || c.includes('rev') || c.includes('adj')));
+        if (colLOIRev === -1) colLOIRev = row.findIndex(c => c.includes('loi') && !c.includes('period'));
+        colQoEPeriod = row.findIndex(c => c.includes('qoe') && c.includes('period'));
+        colQoERev    = row.findIndex(c => c.includes('qoe') && (c.includes('revenue') || c.includes('rev') || c.includes('adj')));
+        if (colQoERev === -1) colQoERev = row.findIndex(c => c.includes('qoe') && !c.includes('period'));
+        colCurRev    = row.findIndex(c => c.includes('current') && (c.includes('rev') || c.includes('revenue')));
+        // Fallback: after LOI Period, the next column is LOI Revenue
+        if (colLOIRev === -1 && colLOIPeriod >= 0) colLOIRev = colLOIPeriod + 1;
+        break;
+      }
+    }
+    if (headerIdx === -1 || (colLOIRev === -1 && colLOIPeriod === -1)) {
+      console.warn('[Dashboard] Summary tab: could not detect LOI columns');
+      return;
+    }
+
+    // Build fuzzy deal matcher
+    function fuzzyMatch(rawName) {
+      const clean = rawName.toLowerCase().replace(/[^a-z0-9]/g, '');
+      for (const deal of DEALS) {
+        const d = deal.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+        if (clean === d || clean.includes(d) || d.includes(clean)) return deal.name;
+      }
+      return null;
+    }
+
+    let changed = false;
+    const sheetLOI = {};   // keyed by deal name → { loi, loiPeriod, qoe, qoePeriod, current }
+    for (let i = headerIdx + 1; i < data.length; i++) {
+      const row = data[i] || [];
+      // Find the deal name — try colDeal first, else scan for any non-empty non-numeric
+      let rawName = (colDeal >= 0 ? row[colDeal] : '') || '';
+      if (!rawName.trim()) {
+        // scan the row for a plausible deal name (non-empty, starts with letter)
+        for (let c = 0; c < Math.min(row.length, 4); c++) {
+          const v = (row[c] || '').trim();
+          if (v && /^[a-zA-Z]/.test(v) && isNaN(parseNum(v))) { rawName = v; break; }
+        }
+      }
+      rawName = rawName.trim();
+      if (!rawName) continue;
+
+      const dealName = fuzzyMatch(rawName);
+      if (!dealName) continue;
+
+      const loiRevRaw = colLOIRev >= 0 ? (row[colLOIRev] || '') : '';
+      const loiRev    = parseNum(loiRevRaw);
+      const loiPer    = colLOIPeriod >= 0 ? (row[colLOIPeriod] || '').trim() : '';
+      const qoeRev    = colQoERev >= 0 ? parseNum(row[colQoERev] || '') : null;
+      const qoePer    = colQoEPeriod >= 0 ? (row[colQoEPeriod] || '').trim() : '';
+      const curRev    = colCurRev >= 0 ? parseNum(row[colCurRev] || '') : null;
+
+      if (loiRev > 0) {
+        sheetLOI[dealName] = { loi: loiRev, loiPeriod: loiPer, qoe: qoeRev, qoePeriod: qoePer, current: curRev };
+        if (loiConfig[dealName] !== loiRev) { loiConfig[dealName] = loiRev; changed = true; }
+      }
+    }
+
+    if (Object.keys(sheetLOI).length) {
+      window._sheetLOI = sheetLOI;   // store for display in LOI Config tab
+      if (changed) {
+        try { localStorage.setItem(LOI_KEY, JSON.stringify(loiConfig)); } catch {}
+        console.log('[Dashboard] LOI values loaded from Summary tab:', sheetLOI);
+      }
+    } else {
+      console.warn('[Dashboard] Summary tab parsed but no LOI values found');
+    }
+  } catch(e) {
+    console.warn('[Dashboard] fetchSummaryLOI error:', e.message);
+  }
+}
+function saveLOI() {
+  DEALS.forEach(d => {
+    const el = document.getElementById('loiInp_' + d.name.replace(/\W/g,'_'));
+    if (!el) return;
+    const v = parseNum(el.value);
+    loiConfig[d.name] = v > 0 ? v : null;
+  });
+  try { localStorage.setItem(LOI_KEY, JSON.stringify(loiConfig)); } catch {}
+  renderDashboard();
+  showToast('LOI values saved.');
+}
+function buildLoiGrid() {
+  const grid = document.getElementById('loiGrid');
+  grid.innerHTML = DEALS.map(d => {
+    const id  = 'loiInp_' + d.name.replace(/\W/g,'_');
+    const val = loiConfig[d.name];
+    const loaded = loadedDeals.includes(d.name);
+    const sheetSrc = window._sheetLOI && window._sheetLOI[d.name];
+    const sheetBadge = sheetSrc
+      ? `<span style="color:var(--accent);font-size:9px;font-weight:700;margin-left:4px">● from sheet${sheetSrc.loiPeriod ? ' · ' + sheetSrc.loiPeriod : ''}</span>`
+      : '';
+    return `<div class="loi-item">
+      <div class="loi-deal">${d.name}
+        ${loaded ? '<span style="color:var(--green);font-size:9px">● data loaded</span>' : '<span style="color:var(--text4);font-size:9px">● no data</span>'}
+        ${sheetBadge}
+      </div>
+      <div class="loi-row">
+        <span class="loi-curr">$</span>
+        <input type="text" id="${id}" class="loi-inp"
+               value="${val ? numFmt(val) : ''}" placeholder="e.g. 2,500,000">
+      </div>
+    </div>`;
+  }).join('');
+}
+
+/* ════════════════════════════════════════════════════════════
+   FORMATTING
+   ════════════════════════════════════════════════════════════ */
+function fmtM(n, compact = false) {
+  if (n == null || isNaN(n)) return '—';
+  if (compact) {
+    if (Math.abs(n) >= 1e6) return '$' + (n/1e6).toFixed(2) + 'M';
+    if (Math.abs(n) >= 1e3) return '$' + (n/1e3).toFixed(0) + 'K';
+    return '$' + Math.round(n);
+  }
+  return '$' + Math.round(n).toLocaleString();
+}
+function fmtPct(n, sign = false) {
+  if (n == null || isNaN(n)) return '—';
+  return (sign && n > 0 ? '+' : '') + (n*100).toFixed(1) + '%';
+}
+function numFmt(n) { return Math.round(n).toLocaleString(); }
+function fmtK(n)   { return n ? numFmt(Math.round(n)) : '—'; }
+
+/* ════════════════════════════════════════════════════════════
+   CHART HELPERS
+   ════════════════════════════════════════════════════════════ */
+function destroyChart(id) { if (charts[id]) { charts[id].destroy(); delete charts[id]; } }
+
+/* Chart.js global defaults for light theme */
+Chart.defaults.color = '#6B7280';
+Chart.defaults.borderColor = '#E5E7EB';
+Chart.defaults.font.family = "'Inter', -apple-system, sans-serif";
+Chart.defaults.font.size = 11;
+
+const TOOLTIP = {
+  backgroundColor: '#1B3564',
+  borderColor: '#1B3564',
+  borderWidth: 0,
+  titleColor: '#FFFFFF',
+  bodyColor: 'rgba(255,255,255,0.8)',
+  padding: 10,
+  cornerRadius: 6,
+};
+const SCALE_Y_DOLLAR = {
+  ticks: { color: '#9CA3AF', font: { size: 10 }, callback: v => fmtM(v, true) },
+  grid:  { color: '#F3F4F6' },
+};
+const SCALE_X = {
+  ticks: { color: '#9CA3AF', font: { size: 10 }, maxRotation: 45 },
+  grid:  { display: false },
+};
+
+/* ════════════════════════════════════════════════════════════
+   CHART RENDERERS
+   ════════════════════════════════════════════════════════════ */
+function renderTTMTrend(canvasId, rolling, loiTotal) {
+  destroyChart(canvasId);
+  if (!rolling.length) return;
+  const datasets = [{
+    label: 'Rolling TTM Revenue',
+    data: rolling.map(r => r.amount),
+    borderColor: '#1B6E45', backgroundColor: 'rgba(27,110,69,0.07)',
+    borderWidth: 2.5, pointRadius: 3, fill: true, tension: 0.35,
+  }];
+  if (loiTotal) datasets.push({
+    label: 'LOI Target', data: rolling.map(() => loiTotal),
+    borderColor: '#1B3564', borderDash: [7,4], borderWidth: 1.5,
+    pointRadius: 0, fill: false,
+  });
+  charts[canvasId] = new Chart(document.getElementById(canvasId), {
+    type: 'line', data: { labels: rolling.map(r => r.label), datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: { duration: 400 },
+      plugins: { legend: { labels: { boxWidth: 12, padding: 12 } }, tooltip: TOOLTIP },
+      scales: { x: { ...SCALE_X, ticks: { ...SCALE_X.ticks, maxTicksLimit: 12 } }, y: SCALE_Y_DOLLAR },
+    },
+  });
+}
+
+function renderMainChart(data) {
+  destroyChart('main');
+  // Exclude current partial month from trend — it distorts the scale
+  const full = data.filter(x => !isCurrentMonthKey(x.key));
+  const partial = data.find(x => isCurrentMonthKey(x.key));
+  const d = full.slice(-18);
+  if (!d.length) return;
+
+  // If partial month exists, show it as a faded bar appended
+  const allD  = partial ? [...d, partial] : d;
+  const bgColors = allD.map((x, i) =>
+    (partial && i === allD.length - 1) ? 'rgba(27,110,69,0.28)' : 'rgba(27,110,69,0.75)'
+  );
+  const bdColors = allD.map((x, i) =>
+    (partial && i === allD.length - 1) ? 'rgba(27,110,69,0.45)' : '#1B6E45'
+  );
+  const lineColors = allD.map((x, i) =>
+    (partial && i === allD.length - 1) ? 'rgba(27,53,100,0.3)' : '#1B3564'
+  );
+
+  charts.main = new Chart(document.getElementById('mainChart'), {
+    type: 'bar',
+    data: {
+      labels: allD.map(x => x.label + (isCurrentMonthKey(x.key) ? ' *' : '')),
+      datasets: [
+        {
+          label: 'Revenue',
+          data: allD.map(x => x.adjCollections),
+          backgroundColor: bgColors, borderColor: bdColors, borderWidth: 1, order: 2,
+        },
+        {
+          type: 'line', label: 'Charge Amount',
+          data: allD.map(x => isCurrentMonthKey(x.key) ? null : x.chargeAmount),
+          borderColor: '#1B3564', borderWidth: 2, backgroundColor: 'transparent',
+          pointRadius: 2.5, tension: 0.25, order: 1, spanGaps: false,
+        },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: { duration: 300 },
+      plugins: {
+        legend: { labels: { boxWidth: 12, padding: 12 } },
+        tooltip: { ...TOOLTIP, callbacks: { label: c => ' ' + fmtM(c.raw) } },
+      },
+      scales: {
+        x: { ...SCALE_X, ticks: { ...SCALE_X.ticks, maxTicksLimit: 12, maxRotation: 30 } },
+        y: SCALE_Y_DOLLAR,
+      },
+    },
+  });
+}
+
+function renderYoYChart(yoy) {
+  destroyChart('yoy');
+  const d = yoy.filter(r => r.prior != null);
+  if (!d.length) return;
+  charts.yoy = new Chart(document.getElementById('yoyChart'), {
+    type: 'bar',
+    data: {
+      labels: d.map(r => r.month + (isCurrentMonthKey(r.key) ? ' *' : '')),
+      datasets: [
+        {
+          type: 'bar',
+          label: 'Current Year',
+          data: d.map(r => r.current),
+          backgroundColor: 'rgba(27,110,69,0.72)',
+          borderColor: '#1B6E45', borderWidth: 1,
+          order: 2,
+        },
+        {
+          type: 'line',
+          label: 'Prior Year',
+          data: d.map(r => r.prior),
+          borderColor: '#1B3564', borderWidth: 2.5,
+          backgroundColor: 'transparent',
+          pointRadius: 5, pointBackgroundColor: '#fff',
+          pointBorderColor: '#1B3564', pointBorderWidth: 2,
+          tension: 0.2, order: 1,
+        },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: { duration: 400 },
+      plugins: {
+        legend: { labels: { boxWidth: 12, padding: 12 } },
+        tooltip: {
+          ...TOOLTIP,
+          callbacks: {
+            label: c => ' ' + fmtM(c.raw),
+            afterBody: items => {
+              const i = items[0]?.dataIndex;
+              if (i == null) return [];
+              const r = d[i];
+              const parts = [];
+              if (r.pctChg != null) parts.push(`YoY: ${r.pctChg>=0?'+':''}${(r.pctChg*100).toFixed(1)}%`);
+              if (isCurrentMonthKey(r.key)) parts.push('* Partial month — in progress');
+              return parts;
+            }
+          }
+        }
+      },
+      scales: { x: { ...SCALE_X, ticks: { ...SCALE_X.ticks, maxRotation: 0 } }, y: SCALE_Y_DOLLAR },
+    },
+  });
+}
+
+/* ════════════════════════════════════════════════════════════
+   RENDERERS
+   ════════════════════════════════════════════════════════════ */
+const set   = (id, v)       => { const e = document.getElementById(id); if (e) e.textContent = v; };
+const setH  = (id, h)       => { const e = document.getElementById(id); if (e) e.innerHTML   = h; };
+const setS  = (id, p, v)    => { const e = document.getElementById(id); if (e) e.style[p]    = v; };
+
+function renderKPIs(monthly) {
+  const d = filteredData;
+  const tC   = d.reduce((s,r) => s + r.chargeAmount,   0);
+  const tAdj = d.reduce((s,r) => s + r.adjCollections, 0);
+  const tPrc = d.reduce((s,r) => s + r.procedures,     0);
+  const tEnc = d.reduce((s,r) => s + r.encounters,     0);
+  const days = new Set(d.filter(r=>r.date).map(r=>r.date.toDateString())).size;
+  const locs = [...new Set(d.map(r=>r.location).filter(Boolean))];
+  const ttm  = calcTTM(monthly);
+  const dates = d.filter(r=>r.date).map(r=>r.date.getTime());
+  const latest = dates.length ? new Date(Math.max(...dates)) : null;
+
+  set('kpiTTM',        ttm ? fmtM(ttm.amount, true) : '—');
+  set('kpiTTMPeriod',  ttm ? ttm.periodLabel + (ttm.isPartial ? ` (${ttm.months}mo)` : '') : 'Insufficient data');
+  set('kpiCharge',     fmtM(tC, true));
+  set('kpiCollections',fmtM(tAdj, true));
+  set('kpiProdPerEnc',  tEnc > 0 ? '$' + numFmt(Math.round(tC / tEnc)) : '—');
+  set('kpiProdPerProc', tPrc > 0 ? '$' + numFmt(Math.round(tC / tPrc)) : '—');
+  set('kpiEncPerDay',   days > 0 ? (tEnc / days).toFixed(1) : '—');
+  set('kpiAvgDaily',   fmtM(days > 0 ? tC/days : null, true));
+  set('kpiAvgDailySub',`Across ${days} working days`);
+  set('kpiEncounters', tEnc ? numFmt(tEnc) : '—');
+  set('kpiProcedures', tPrc ? numFmt(tPrc) : '—');
+  set('kpiLocations',  locs.length);
+  set('kpiLocationsSub', locs.length ? locs.slice(0,4).join(', ') + (locs.length>4 ? ` +${locs.length-4} more` : '') : 'None');
+  set('kpiLatestDate', latest ? latest.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—');
+}
+
+function renderTTMvsLOI(monthly) {
+  const ttm = calcTTM(monthly);
+  set('cmpTTM',      ttm ? fmtM(ttm.amount, true) : '—');
+  set('cmpTTMPeriod',ttm ? ttm.periodLabel + (ttm.isPartial ? ` (${ttm.months}mo only)` : '') : 'Insufficient data');
+
+  const f = getFilters();
+  const inScope = f.deal ? [f.deal] : [...new Set(filteredData.map(r=>r.deal))];
+  const configured = inScope.filter(d => loiConfig[d] > 0);
+  const loiTotal = configured.length ? configured.reduce((s,d) => s + loiConfig[d], 0) : null;
+
+  const loiEl = document.getElementById('cmpLOI');
+  if (loiEl) {
+    if (loiTotal) {
+      loiEl.textContent = fmtM(loiTotal, true);
+      loiEl.classList.remove('unset');
+    } else {
+      loiEl.textContent = 'Not set — configure in LOI Config tab';
+      loiEl.classList.add('unset');
+    }
+  }
+
+  if (ttm && loiTotal) {
+    const vD = ttm.amount - loiTotal, vP = vD / loiTotal;
+    const col = vD >= 0 ? 'var(--green)' : 'var(--red)';
+    set('cmpVarD',    (vD >= 0 ? '+' : '') + fmtM(vD, true));
+    set('cmpVarDSub', 'vs. LOI baseline');
+    set('cmpVarP',    fmtPct(vP, true));
+    setS('cmpVarD','color',col); setS('cmpVarP','color',col);
+  } else {
+    set('cmpVarD','—'); set('cmpVarDSub','Set LOI values to enable'); set('cmpVarP','—');
+    setS('cmpVarD','color',''); setS('cmpVarP','color','');
+  }
+
+  const rolling = calcRollingTTM(monthly);
+  renderTTMTrend('ttmTrendChart',  rolling, loiTotal);
+  renderTTMTrend('ttmTrendChart2', rolling, loiTotal);
+}
+
+function renderYoY(monthly) {
+  const yoy5    = calcYoY(monthly, 5);
+  const yoyFull = calcYoYFull(monthly);
+  renderYoYChart(yoy5);
+
+  // helper: render a % badge
+  function yoyPctBadge(pct) {
+    if (pct == null) return '<span style="color:var(--text3)">—</span>';
+    const cls = pct >= 0 ? 'pos' : 'neg';
+    return `<span class="yoy-badge ${cls}">${pct>=0?'↑':'↓'} ${pct>=0?'+':''}${(pct*100).toFixed(1)}%</span>`;
+  }
+  function yoyMonthLabel(r) {
+    return r.month + (isCurrentMonthKey(r.key) ? '<span class="partial-tag">partial</span>' : '');
+  }
+
+  // 5-month table
+  const tb5 = document.getElementById('yoyTableBody');
+  if (!yoy5.length) {
+    tb5.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text3);padding:20px;">No data</td></tr>';
+  } else {
+    tb5.innerHTML = yoy5.map(r => `<tr>
+      <td class="l bold">${yoyMonthLabel(r)}</td>
+      <td>${fmtM(r.current, true)}</td>
+      <td>${r.prior != null ? fmtM(r.prior, true) : '<span style="color:var(--text3)">—</span>'}</td>
+      <td class="${r.change == null ? '' : r.change >= 0 ? 'pos' : 'neg'}" style="font-weight:600">${r.change != null ? (r.change>=0?'↑ +':'↓ ')+fmtM(r.change,true) : '—'}</td>
+      <td>${yoyPctBadge(r.pctChg)}</td>
+    </tr>`).join('');
+  }
+
+  // Full history table
+  const tbH = document.getElementById('yoyHistBody');
+  set('yoyHistMeta', `${yoyFull.length} months with prior-year data`);
+  if (!yoyFull.length) {
+    tbH.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text3);padding:20px;">Insufficient data for YoY comparison</td></tr>';
+  } else {
+    tbH.innerHTML = yoyFull.map(r => `<tr>
+      <td class="l bold">${yoyMonthLabel(r)}</td>
+      <td>${fmtM(r.current, true)}</td>
+      <td>${fmtM(r.prior, true)}</td>
+      <td class="${r.change >= 0 ? 'pos' : 'neg'}" style="font-weight:600">${(r.change>=0?'↑ +':'↓ ')+fmtM(r.change,true)}</td>
+      <td>${yoyPctBadge(r.pctChg)}</td>
+    </tr>`).join('');
+  }
+}
+
+/* Track expanded years globally so state persists across renders */
+const _expandedYears = new Set();
+function toggleYear(year) {
+  const rows   = document.querySelectorAll(`.mrow-${year}`);
+  const arrow  = document.getElementById(`yarrow-${year}`);
+  const isOpen = _expandedYears.has(year);
+  if (isOpen) {
+    _expandedYears.delete(year);
+    rows.forEach(r => r.style.display = 'none');
+    if (arrow) arrow.textContent = '▶';
+  } else {
+    _expandedYears.add(year);
+    rows.forEach(r => r.style.display = '');
+    if (arrow) arrow.textContent = '▼';
+  }
+}
+
+function renderPerfTable(periodData) {
+  const isM = currentView === 'monthly';
+  const head = document.getElementById('perfTableHead');
+  const body = document.getElementById('perfTableBody');
+  head.innerHTML = `<tr>
+    <th class="l">${isM ? 'Period' : 'Week'}</th>
+    <th>Charge Amount</th><th>Revenue</th>
+    <th>Procedures</th>
+    <th>Encounters</th><th>${isM ? 'Working Days' : 'Days'}</th>
+  </tr>`;
+  if (!periodData.length) {
+    body.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text3);padding:28px;">No data for selected filters</td></tr>';
+    return;
+  }
+
+  if (!isM) {
+    // Weekly: flat list, newest-first, cap 60
+    const rows = [...periodData].reverse().slice(0, 60);
+    set('perfTableMeta', `Showing ${rows.length} of ${periodData.length} weeks`);
+    body.innerHTML = rows.map(r => `<tr>
+      <td class="l bold">${r.label}</td>
+      <td>${fmtM(r.chargeAmount)}</td>
+      <td>${fmtM(r.adjCollections)}</td>
+      <td>${fmtK(r.procedures)}</td>
+      <td>${fmtK(r.encounters)}</td>
+      <td>${r.days}</td>
+    </tr>`).join('');
+    return;
+  }
+
+  /* Monthly — group by year, year rows are collapsible */
+  const byYear = {};
+  periodData.forEach(m => {
+    const y = String(m.year);
+    if (!byYear[y]) byYear[y] = [];
+    byYear[y].push(m);
+  });
+
+  const years = Object.keys(byYear).sort().reverse();  // newest year first
+
+  set('perfTableMeta', `${years.length} years · ${periodData.length} months · click a year row to expand`);
+
+  let html = '';
+  years.forEach(year => {
+    const months = byYear[year].sort((a,b) => b.monthNum - a.monthNum);  // newest month first
+    // Year totals
+    const tot = months.reduce((s, m) => ({
+      chargeAmount:   s.chargeAmount   + m.chargeAmount,
+      adjCollections: s.adjCollections + m.adjCollections,
+      procedures:     s.procedures     + m.procedures,
+      encounters:     s.encounters     + m.encounters,
+      days:           s.days           + m.days,
+    }), { chargeAmount:0, adjCollections:0, procedures:0, encounters:0, days:0 });
+    const totRate = tot.chargeAmount > 0 ? tot.adjCollections / tot.chargeAmount : null;
+    const isOpen  = _expandedYears.has(year);
+
+    html += `<tr class="year-group-row" onclick="toggleYear('${year}')" style="cursor:pointer;background:var(--surface2);border-top:2px solid var(--border2);">
+      <td class="l" style="padding:10px 14px;font-weight:700;font-size:13px;">
+        <span id="yarrow-${year}" style="font-size:9px;margin-right:6px;display:inline-block;width:10px">${isOpen ? '▼' : '▶'}</span>
+        ${year}
+        <span style="font-size:11px;font-weight:500;color:var(--text3);margin-left:6px">${months.length} month${months.length!==1?'s':''}</span>
+      </td>
+      <td style="font-weight:600">${fmtM(tot.chargeAmount)}</td>
+      <td style="font-weight:600">${fmtM(tot.adjCollections)}</td>
+      <td style="font-weight:600">${fmtK(tot.procedures)}</td>
+      <td style="font-weight:600">${fmtK(tot.encounters)}</td>
+      <td style="font-weight:600">${tot.days}</td>
+    </tr>`;
+
+    months.forEach(m => {
+      html += `<tr class="mrow-${year}" style="display:${isOpen ? '' : 'none'};background:var(--surface);">
+        <td class="l" style="padding-left:32px;color:var(--text2)">${m.label}</td>
+        <td>${fmtM(m.chargeAmount)}</td>
+        <td>${fmtM(m.adjCollections)}</td>
+        <td>${fmtK(m.procedures)}</td>
+        <td>${fmtK(m.encounters)}</td>
+        <td>${m.days}</td>
+      </tr>`;
+    });
+  });
+
+  body.innerHTML = html;
+}
+
+function renderAlerts() {
+  const alerts = [];
+  if (loadErrors.length) {
+    alerts.push({ t:'warn', m:`Could not load: ${loadErrors.map(e=>e.deal).join(', ')} (tabs may be empty or not yet created).` });
+  }
+  if (filteredData.some(r => r.deal === 'Atlanta Endo')) {
+    alerts.push({ t:'warn', m:`Atlanta Endo data is at monthly granularity — weekly view excludes these records.` });
+  }
+  const monthly = aggregateMonthly(filteredData);
+  const ttm = calcTTM(monthly);
+  if (ttm?.isPartial) {
+    alerts.push({ t:'warn', m:`TTM uses only ${ttm.months} months — insufficient history for a full 12-month window in the selected filter.` });
+  }
+  document.getElementById('alertArea').innerHTML = alerts.map(a =>
+    `<div class="alert ${a.t}"><span class="alert-icon">${a.t==='warn'?'⚠':'✕'}</span><span>${a.m}</span></div>`
+  ).join('');
+}
+
+/* ════════════════════════════════════════════════════════════
+   LOCATION BREAKDOWN
+   ════════════════════════════════════════════════════════════ */
+function renderPeriodSpotlight() {
+  const thead = document.getElementById('periodSpotlightHead');
+  const tbody = document.getElementById('periodSpotlightBody');
+  const meta  = document.getElementById('periodSpotlightMeta');
+  const lbl   = document.getElementById('periodSpotlightLabel');
+  const sub   = document.getElementById('periodSpotlightSub');
+  if (!thead || !tbody) return;
+
+  const isMonthly = currentView === 'monthly';
+  if (lbl) lbl.textContent = isMonthly
+    ? 'Revenue Period Analysis · Month T / T-1 / T-2'
+    : 'Revenue Period Analysis · Week T / T-1 / T-2';
+  if (sub) sub.textContent = `3 most recent ${isMonthly ? 'months' : 'weeks'} · current year vs same period prior year · per location`;
+
+  // Collect all period keys present in filtered data
+  const periodSet = new Set();
+  filteredData.forEach(r => {
+    if (isMonthly && r.year && r.monthNum)
+      periodSet.add(`${r.year}-${String(r.monthNum).padStart(2,'0')}`);
+    else if (!isMonthly && r.year && r.week)
+      periodSet.add(`${r.year}-${String(r.week).padStart(2,'0')}`);
+  });
+  const periods = [...periodSet].sort().slice(-3);   // [T-2, T-1, T]
+  if (!periods.length) {
+    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--text3);padding:16px;">Not enough period data</td></tr>';
+    return;
+  }
+
+  const priorPeriods = periods.map(p => {
+    const [y, m] = p.split('-');
+    return `${+y - 1}-${m}`;
+  });
+
+  // Aggregate current periods from filteredData
+  const locData = {};
+  filteredData.forEach(r => {
+    const pk = isMonthly
+      ? (r.year && r.monthNum ? `${r.year}-${String(r.monthNum).padStart(2,'0')}` : null)
+      : (r.year && r.week     ? `${r.year}-${String(r.week).padStart(2,'0')}`     : null);
+    if (!pk || !periods.includes(pk)) return;
+    const loc = r.location || '(unspecified)';
+    if (!locData[loc]) locData[loc] = { deal: r.deal };
+    locData[loc][pk] = (locData[loc][pk] || 0) + r.adjCollections;
+  });
+
+  // Aggregate prior-year periods from allData (respecting deal/loc filters but NOT date filter)
+  const f = getFilters();
+  allData.forEach(r => {
+    if (f.deal && r.deal !== f.deal) return;
+    if (f.locs.size > 0 && !f.locs.has(r.location)) return;
+    const pk = isMonthly
+      ? (r.year && r.monthNum ? `${r.year}-${String(r.monthNum).padStart(2,'0')}` : null)
+      : (r.year && r.week     ? `${r.year}-${String(r.week).padStart(2,'0')}`     : null);
+    if (!pk || !priorPeriods.includes(pk)) return;
+    const loc = r.location || '(unspecified)';
+    if (!locData[loc]) locData[loc] = { deal: r.deal };
+    locData[loc][pk] = (locData[loc][pk] || 0) + r.adjCollections;
+  });
+
+  const tLabels = ['T-2', 'T-1', 'T'];
+  function periodLabel(key) {
+    const [y, m] = key.split('-');
+    return isMonthly
+      ? `${MO_SHORT[+m - 1]} '${String(+y).slice(2)}`
+      : `Wk ${+m} '${String(+y).slice(2)}`;
+  }
+
+  // Build header: two rows
+  const headerCols = periods.map((p, i) => {
+    const curLbl  = periodLabel(p);
+    const priLbl  = periodLabel(priorPeriods[i]);
+    return `<th colspan="3" style="text-align:center;background:var(--surface3);border-left:2px solid var(--border2)">
+      ${priLbl} → ${curLbl} <span style="opacity:0.55;font-weight:400">(${tLabels[i]})</span>
+    </th>`;
+  }).join('');
+  const subCols = periods.map(() =>
+    `<th style="border-left:2px solid var(--border2)">Current</th><th>YoY $</th><th>YoY %</th>`
+  ).join('');
+  thead.innerHTML = `<tr><th class="l" rowspan="2">Location</th><th class="l" rowspan="2" style="color:var(--text3)">Deal</th>${headerCols}</tr><tr>${subCols}</tr>`;
+
+  // Sort locations by most recent period revenue desc
+  const lastPeriod = periods[periods.length - 1];
+  const locs = Object.keys(locData)
+    .filter(loc => periods.some(p => (locData[loc][p] || 0) > 0))
+    .sort((a, b) => (locData[b][lastPeriod] || 0) - (locData[a][lastPeriod] || 0));
+
+  if (meta) meta.textContent = `${locs.length} locations`;
+
+  if (!locs.length) {
+    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--text3);padding:16px;">No data for these periods</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = locs.map(loc => {
+    const d = locData[loc];
+    const periodCells = periods.map((p, i) => {
+      const cur  = d[p]              ?? null;
+      const pri  = d[priorPeriods[i]] ?? null;
+      const varD = cur != null && pri != null ? cur - pri : null;
+      const varP = varD != null && pri > 0 ? varD / pri : null;
+      const col  = varD == null ? '' : varD >= 0 ? 'var(--green)' : 'var(--red)';
+      return `<td style="border-left:2px solid var(--border2);font-weight:600">${cur != null ? fmtM(cur, true) : '<span style="color:var(--text3)">—</span>'}</td>
+              <td style="color:${col};font-weight:600">${varD != null ? (varD >= 0 ? '↑ +' : '↓ ') + fmtM(varD, true) : '—'}</td>
+              <td>${varP != null ? `<span class="yoy-badge ${varP >= 0 ? 'pos' : 'neg'}">${varP >= 0 ? '+' : ''}${(varP * 100).toFixed(1)}%</span>` : '—'}</td>`;
+    }).join('');
+    return `<tr>
+      <td class="l" style="font-weight:600">${loc}</td>
+      <td class="l" style="font-size:11px;color:var(--text2)">${d.deal || ''}</td>
+      ${periodCells}
+    </tr>`;
+  }).join('');
+}
+
+function aggregateByLocation(data) {
+  const map = {};
+  data.forEach(r => {
+    const key = `${r.deal}__${r.location || '(unspecified)'}`;
+    if (!map[key]) map[key] = {
+      deal: r.deal, location: r.location || '(unspecified)',
+      chargeAmount: 0, adjCollections: 0, procedures: 0, encounters: 0,
+    };
+    map[key].chargeAmount   += r.chargeAmount;
+    map[key].adjCollections += r.adjCollections;
+    map[key].procedures     += r.procedures;
+    map[key].encounters     += r.encounters;
+  });
+  return Object.values(map).map(m => ({
+    ...m,
+    collRate:  m.chargeAmount > 0  ? m.adjCollections / m.chargeAmount : null,
+    avgTicket: m.encounters   > 0  ? m.adjCollections / m.encounters   : null,
+  })).sort((a, b) => b.adjCollections - a.adjCollections);
+}
+
+function calcPriorPeriodByLocation(data, isMonthly) {
+  // For each location, compute adj collections for the most recent period
+  // and the period immediately before it, then return a map: location → priorAdj
+  const locPeriods = {};
+  data.forEach(r => {
+    if (!r.year) return;
+    const loc = r.location || '(unspecified)';
+    const key = isMonthly
+      ? `${r.year}-${String(r.monthNum).padStart(2,'0')}`
+      : `${r.year}-${String(r.week||0).padStart(2,'0')}`;
+    if (!key) return;
+    if (!locPeriods[loc]) locPeriods[loc] = {};
+    if (!locPeriods[loc][key]) locPeriods[loc][key] = 0;
+    locPeriods[loc][key] += r.adjCollections;
+  });
+  const result = {};
+  Object.entries(locPeriods).forEach(([loc, periods]) => {
+    const sorted = Object.keys(periods).sort();
+    if (sorted.length < 2) { result[loc] = null; return; }
+    const latest = sorted[sorted.length - 1];
+    const prior  = sorted[sorted.length - 2];
+    result[loc] = { current: periods[latest], prior: periods[prior], priorKey: prior };
+  });
+  return result;
+}
+
+function renderLocationBreakdown() {
+  const body = document.getElementById('locTableBody');
+  const meta = document.getElementById('locTableMeta');
+  if (!body) return;
+
+  const locs = aggregateByLocation(filteredData);
+  const isMonthly = currentView === 'monthly';
+  const priorMap = calcPriorPeriodByLocation(filteredData, isMonthly);
+
+  if (meta) meta.textContent = `${locs.length} locations`;
+
+  if (!locs.length) {
+    body.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--text3);padding:20px;">No location data</td></tr>';
+    return;
+  }
+
+  body.innerHTML = locs.map(loc => {
+    const pp = priorMap[loc.location];
+    const varD = pp ? loc.adjCollections - pp.prior : null;
+    const varP = pp && pp.prior > 0 ? varD / pp.prior : null;
+    const varCol = varD == null ? '' : varD >= 0 ? 'var(--green)' : 'var(--red)';
+    const varHtml = varD != null
+      ? `<span style="color:${varCol};font-weight:600">${varD>=0?'↑ +':'↓ '}${fmtM(varD,true)}</span>`
+      : '<span style="color:var(--text3)">—</span>';
+    const pctHtml = varP != null
+      ? `<span class="yoy-badge ${varP>=0?'pos':'neg'}">${varP>=0?'↑ +':'↓ '}${(varP*100).toFixed(1)}%</span>`
+      : '<span style="color:var(--text3)">—</span>';
+
+    return `<tr>
+      <td class="l" style="font-weight:600;font-family:'Inter',-apple-system,sans-serif">${loc.location}</td>
+      <td class="l" style="font-family:'Inter',-apple-system,sans-serif;font-size:11px;color:var(--text2)">${loc.deal}</td>
+      <td style="font-weight:600">${fmtM(loc.adjCollections, true)}</td>
+      <td>${fmtM(loc.chargeAmount, true)}</td>
+      <td>${loc.collRate != null ? fmtPct(loc.collRate) : '—'}</td>
+      <td>${loc.encounters ? numFmt(loc.encounters) : '—'}</td>
+      <td style="font-weight:600">${loc.avgTicket ? '$' + numFmt(Math.round(loc.avgTicket)) : '—'}</td>
+      <td>${varHtml}</td>
+      <td>${pctHtml}</td>
+    </tr>`;
+  }).join('');
+
+  /* Populate the location detail selector with deals that have multi-location data */
+  const sel = document.getElementById('locDetailSelect');
+  if (sel) {
+    const dealSet = [...new Set(locs.map(l => l.deal))].sort();
+    const prev = sel.value;
+    sel.innerHTML = '<option value="">— pick a deal —</option>' +
+      dealSet.map(d => `<option value="${d}"${d===prev?' selected':''}>${d}</option>`).join('');
+    if (prev && dealSet.includes(prev)) renderLocDetail();
+  }
+}
+
+/* ── Location Revenue Detail: monthly × fiscal year cross-tab ─────────── */
+const MO_FULL_LIST = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+function renderLocDetail() {
+  const sel = document.getElementById('locDetailSelect');
+  const container = document.getElementById('locDetailBody');
+  const title = document.getElementById('locDetailTitle');
+  if (!sel || !container) return;
+
+  const deal = sel.value;
+  if (!deal) {
+    container.innerHTML = '<div style="text-align:center;color:var(--text3);padding:28px;font-size:12px">Choose a deal from the dropdown above</div>';
+    if (title) title.textContent = 'Select a deal';
+    return;
+  }
+  if (title) title.textContent = deal;
+
+  /* All rows for this deal that have month/year */
+  const rows = allData.filter(r => r.deal === deal && r.year && r.monthNum);
+  if (!rows.length) {
+    container.innerHTML = '<div style="text-align:center;color:var(--text3);padding:28px;font-size:12px">No monthly data for this deal</div>';
+    return;
+  }
+
+  /* Get sorted locations and all years across all locations */
+  const locSet = [...new Set(rows.map(r => r.location || '(unspecified)'))].sort();
+  const allYears = [...new Set(rows.map(r => r.year))].sort();
+
+  /* Build per-location data: byLoc[loc][year][month] = {adj, enc} */
+  const byLoc = {};
+  rows.forEach(r => {
+    const loc = r.location || '(unspecified)';
+    const y = r.year, m = r.monthNum;
+    if (!byLoc[loc]) byLoc[loc] = {};
+    if (!byLoc[loc][y]) byLoc[loc][y] = {};
+    if (!byLoc[loc][y][m]) byLoc[loc][y][m] = { adj: 0, enc: 0 };
+    byLoc[loc][y][m].adj += r.adjCollections;
+    byLoc[loc][y][m].enc += r.encounters;
+  });
+
+  /* For each loc, determine which years have any data */
+  function locYears(loc) {
+    return allYears.filter(y => byLoc[loc]?.[y] && Object.keys(byLoc[loc][y]).length > 0);
+  }
+
+  /* Build one combined table per metric (Revenue and Avg Ticket) */
+  const buildCombinedTable = (metricLabel, cellFn, totalFn) => {
+    /* header row 1: location name spanning its year columns */
+    const locHeaders = locSet.map(loc => {
+      const yrs = locYears(loc);
+      return `<th colspan="${yrs.length}" style="text-align:center;padding:6px 10px;font-size:11px;font-weight:700;color:var(--navy);background:var(--surface2);border-left:3px solid var(--border2);white-space:nowrap">${loc}</th>`;
+    }).join('');
+
+    /* header row 2: year sub-headers */
+    const yearHeaders = locSet.map(loc => {
+      const yrs = locYears(loc);
+      return yrs.map((y, i) => `<th style="text-align:right;padding:5px 8px;font-size:10px;font-weight:700;color:var(--text3);background:var(--surface2);white-space:nowrap${i===0?';border-left:3px solid var(--border2)':''}">FY${String(y).slice(2)}</th>`).join('');
+    }).join('');
+
+    let h = `<table style="border-collapse:collapse;font-size:12px;white-space:nowrap">`;
+    h += `<thead>`;
+    /* metric label spanning everything */
+    const totalCols = locSet.reduce((s, loc) => s + locYears(loc).length, 0);
+    h += `<tr><th colspan="${totalCols + 1}" style="text-align:left;padding:8px 12px;font-size:12px;font-weight:700;background:var(--navy);color:#fff">${metricLabel}</th></tr>`;
+    h += `<tr><th style="text-align:left;padding:5px 10px;font-size:11px;color:var(--text3);background:var(--surface2);min-width:90px">Month</th>${locHeaders}</tr>`;
+    h += `<tr><th style="background:var(--surface2)"></th>${yearHeaders}</tr>`;
+    h += `</thead><tbody>`;
+
+    for (let mo = 1; mo <= 12; mo++) {
+      const hasAny = locSet.some(loc => locYears(loc).some(y => byLoc[loc]?.[y]?.[mo]));
+      const rowBg = mo % 2 === 0 ? 'background:var(--surface2)' : '';
+      h += `<tr style="${rowBg}">`;
+      h += `<td style="padding:3px 10px;font-size:12px;color:var(--text2);font-weight:500">${MO_FULL_LIST[mo-1]}</td>`;
+      locSet.forEach((loc, li) => {
+        const yrs = locYears(loc);
+        yrs.forEach((y, yi) => {
+          const v = byLoc[loc]?.[y]?.[mo];
+          const txt = v ? cellFn(v) : '<span style="color:var(--text4)">–</span>';
+          const borderLeft = yi === 0 ? 'border-left:3px solid var(--border2);' : '';
+          h += `<td style="${borderLeft}text-align:right;padding:3px 8px;font-variant-numeric:tabular-nums">${txt}</td>`;
+        });
+      });
+      h += `</tr>`;
+    }
+
+    /* Totals row */
+    h += `<tr style="background:var(--surface2);border-top:2px solid var(--border2);font-weight:700">`;
+    h += `<td style="padding:6px 10px;font-size:12px">Totals</td>`;
+    locSet.forEach((loc, li) => {
+      const yrs = locYears(loc);
+      yrs.forEach((y, yi) => {
+        const tot = { adj: 0, enc: 0 };
+        for (let m = 1; m <= 12; m++) {
+          const v = byLoc[loc]?.[y]?.[m];
+          if (v) { tot.adj += v.adj; tot.enc += v.enc; }
+        }
+        const txt = totalFn(tot);
+        const borderLeft = yi === 0 ? 'border-left:3px solid var(--border2);' : '';
+        h += `<td style="${borderLeft}text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums">${txt}</td>`;
+      });
+    });
+    h += `</tr></tbody></table>`;
+    return h;
+  };
+
+  const revTable  = buildCombinedTable(
+    'Revenue ($)',
+    v => `$${numFmt(Math.round(v.adj))}`,
+    t => t.adj > 0 ? `$${numFmt(Math.round(t.adj))}` : '–'
+  );
+  const tickTable = buildCombinedTable(
+    'Avg Ticket Price (Revenue ÷ Encounters)',
+    v => v.enc > 0 ? `$${numFmt(Math.round(v.adj / v.enc))}` : '–',
+    t => t.enc > 0 ? `$${numFmt(Math.round(t.adj / t.enc))}` : '–'
+  );
+
+  container.innerHTML = `<div style="display:flex;flex-direction:column;gap:24px;padding-bottom:8px">
+    <div style="overflow-x:auto">${revTable}</div>
+    <div style="overflow-x:auto">${tickTable}</div>
+  </div>`;
+}
+
+function renderDealSummary() {
+  const body = document.getElementById('dealSummaryBody');
+  if (!body) return;
+  const activeDealNames = [...new Set(filteredData.map(r => r.deal))].sort();
+  if (!activeDealNames.length) {
+    body.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text3);padding:20px;">No data loaded</td></tr>';
+    return;
+  }
+  body.innerHTML = activeDealNames.map(dealName => {
+    const dealRows   = filteredData.filter(r => r.deal === dealName);
+    const dealMonthly = aggregateMonthly(dealRows);
+    const ttm        = calcTTM(dealMonthly);
+    const loi        = loiConfig[dealName] || null;
+    const varD       = ttm && loi ? ttm.amount - loi : null;
+    const varP       = varD != null && loi > 0 ? varD / loi : null;
+    const dates      = dealRows.filter(r=>r.date).map(r=>r.date.getTime());
+    const latest     = dates.length ? new Date(Math.max(...dates)) : null;
+    const varCol     = varD == null ? '' : varD >= 0 ? 'var(--green)' : 'var(--red)';
+    const pctHtml    = varP != null
+      ? `<span class="yoy-badge ${varP>=0?'pos':'neg'}">${varP>=0?'↑ +':'↓ '}${(varP*100).toFixed(1)}%</span>`
+      : '<span style="color:var(--text3);font-size:11px">Set in LOI Config</span>';
+    return `<tr>
+      <td class="l deal-name">${dealName}</td>
+      <td class="l period-lbl">${ttm ? ttm.periodLabel : '—'}</td>
+      <td style="font-weight:600">${ttm ? fmtM(ttm.amount, true) : '—'}</td>
+      <td>${loi ? fmtM(loi, true) : '<span style="color:var(--text3);font-size:11px">—</span>'}</td>
+      <td style="color:${varCol};font-weight:700">${varD != null ? (varD>=0?'↑ +':'↓ ')+fmtM(varD,true) : '—'}</td>
+      <td>${pctHtml}</td>
+      <td class="l period-lbl">${latest ? latest.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—'}</td>
+    </tr>`;
+  }).join('');
+}
+
+/* ════════════════════════════════════════════════════════════
+   MASTER RENDER
+   ════════════════════════════════════════════════════════════ */
+function renderDashboard() {
+  const monthly    = aggregateMonthly(filteredData);
+  const weekly     = aggregateWeekly(filteredData);
+  const periodData = currentView === 'monthly' ? monthly : weekly;
+  renderAlerts();
+  renderKPIs(monthly);
+  renderDealSummary();
+  renderTTMvsLOI(monthly);
+  renderMainChart(periodData);
+  renderYoY(monthly);
+  renderPerfTable(periodData);
+  renderPeriodSpotlight();
+}
+
+/* ════════════════════════════════════════════════════════════
+   TOAST
+   ════════════════════════════════════════════════════════════ */
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.classList.remove('show'), 2800);
+}
+
+/* ════════════════════════════════════════════════════════════
+   INITIALIZATION
+   ════════════════════════════════════════════════════════════ */
+async function init() {
+  document.getElementById('loadingOverlay').style.display = 'flex';
+  document.getElementById('statusDot').className = 'dot';
+  document.getElementById('lastUpdated').textContent = 'Loading…';
+  loadLOI();
+
+  // Fetch LOI from Summary tab in background — does NOT block the main load
+  fetchSummaryLOI().catch(() => {});
+
+  try {
+    await loadAllData();
+
+    if (!allData.length) {
+      document.getElementById('loadingDetail').textContent =
+        'No data returned. Check that the Google Sheet is set to "Anyone with the link can view."';
+      document.getElementById('statusDot').className = 'dot red';
+      return;
+    }
+
+    document.getElementById('loadingOverlay').style.display = 'none';
+
+    const now = new Date();
+    document.getElementById('lastUpdated').textContent =
+      `Loaded ${now.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})} · ${loadedDeals.length} of ${DEALS.length} tabs`;
+    document.getElementById('statusDot').className = loadErrors.length ? 'dot amber' : 'dot green';
+
+    buildDealDropdown();
+    rebuildLocationDropdown();
+    buildLoiGrid();
+    onFilterChange();
+
+  } catch (err) {
+    console.error('[Dashboard] init error:', err);
+    document.getElementById('loadingDetail').textContent = `Error: ${err.message}`;
+    document.getElementById('statusDot').className = 'dot red';
+  }
+}
+
+async function refreshData() { await init(); }
+
+init();
+</script>
+</body>
+</html>
