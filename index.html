@@ -456,6 +456,12 @@ table.dt td.neg   { color: var(--red);   font-weight: 600; }
 }
 .yoy-badge.pos { background: var(--green-lt); color: var(--green); }
 .yoy-badge.neg { background: var(--red-lt);   color: var(--red);   }
+.stage-badge {
+  display: inline-block; padding: 2px 9px; border-radius: 11px;
+  background: rgba(27,53,100,0.08); color: var(--navy);
+  font-family: 'Inter', -apple-system, sans-serif;
+  font-weight: 600; font-size: 11px; letter-spacing: 0.3px; white-space: nowrap;
+}
 .partial-tag {
   display: inline-flex; align-items: center; gap: 3px;
   padding: 1px 5px; border-radius: 3px;
@@ -664,6 +670,34 @@ table.dt td.neg   { color: var(--red);   font-weight: 600; }
        ════════════════════════════════════════════ -->
   <div id="tab-overview" class="tab-panel active">
 
+    <div class="sec-head"><span class="sec-title">Portfolio TTM vs LOI</span><span class="sec-rule"></span></div>
+    <div class="ttm-block" style="margin-bottom:24px">
+      <div class="cmp-grid">
+        <div class="cmp-card">
+          <div class="cmp-label">TTM Revenue</div>
+          <div class="cmp-value" id="cmpTTM" style="color:var(--green)">—</div>
+          <div class="cmp-sub" id="cmpTTMPeriod">Most recent 12 months</div>
+        </div>
+        <div class="cmp-card">
+          <div class="cmp-label">LOI Revenue</div>
+          <div class="cmp-value" id="cmpLOI" style="color:var(--navy)">—</div>
+          <div class="cmp-sub">From LOI Config tab (editable)</div>
+        </div>
+        <div class="cmp-card">
+          <div class="cmp-label">$ Variance (TTM − LOI)</div>
+          <div class="cmp-value" id="cmpVarD">—</div>
+          <div class="cmp-sub" id="cmpVarDSub">Set LOI values to enable</div>
+        </div>
+        <div class="cmp-card">
+          <div class="cmp-label">% Variance</div>
+          <div class="cmp-value" id="cmpVarP">—</div>
+          <div class="cmp-sub">TTM vs LOI</div>
+        </div>
+      </div>
+      <div class="chart-title" style="margin-bottom:12px;">Rolling TTM Trend</div>
+      <div class="chart-wrap"><canvas id="ttmTrendChart" height="170"></canvas></div>
+    </div>
+
     <div class="sec-head"><span class="sec-title">Key Performance Indicators</span><span class="sec-rule"></span></div>
     <div class="kpi-grid" style="margin-bottom:24px">
       <div class="kpi-card">
@@ -730,6 +764,7 @@ table.dt td.neg   { color: var(--red);   font-weight: 600; }
           <thead>
             <tr>
               <th class="l">Deal</th>
+              <th class="l">Stage</th>
               <th class="l">TTM Period</th>
               <th>Current TTM</th>
               <th>LOI Revenue</th>
@@ -739,38 +774,10 @@ table.dt td.neg   { color: var(--red);   font-weight: 600; }
             </tr>
           </thead>
           <tbody id="dealSummaryBody">
-            <tr><td colspan="7" style="text-align:center;color:var(--text3);padding:20px;">Loading…</td></tr>
+            <tr><td colspan="8" style="text-align:center;color:var(--text3);padding:20px;">Loading…</td></tr>
           </tbody>
         </table>
       </div>
-    </div>
-
-    <div class="sec-head"><span class="sec-title">Portfolio TTM vs LOI</span><span class="sec-rule"></span></div>
-    <div class="ttm-block">
-      <div class="cmp-grid">
-        <div class="cmp-card">
-          <div class="cmp-label">TTM Revenue</div>
-          <div class="cmp-value" id="cmpTTM" style="color:var(--green)">—</div>
-          <div class="cmp-sub" id="cmpTTMPeriod">Most recent 12 months</div>
-        </div>
-        <div class="cmp-card">
-          <div class="cmp-label">LOI Revenue</div>
-          <div class="cmp-value" id="cmpLOI" style="color:var(--navy)">—</div>
-          <div class="cmp-sub">From LOI Config tab (editable)</div>
-        </div>
-        <div class="cmp-card">
-          <div class="cmp-label">$ Variance (TTM − LOI)</div>
-          <div class="cmp-value" id="cmpVarD">—</div>
-          <div class="cmp-sub" id="cmpVarDSub">Set LOI values to enable</div>
-        </div>
-        <div class="cmp-card">
-          <div class="cmp-label">% Variance</div>
-          <div class="cmp-value" id="cmpVarP">—</div>
-          <div class="cmp-sub">TTM vs LOI</div>
-        </div>
-      </div>
-      <div class="chart-title" style="margin-bottom:12px;">Rolling TTM Trend</div>
-      <div class="chart-wrap"><canvas id="ttmTrendChart" height="170"></canvas></div>
     </div>
 
   </div><!-- /tab-overview -->
@@ -1117,7 +1124,8 @@ function selectCsel(id, value, label) {
   onFilterChange();
 }
 function buildDealDropdown() {
-  const deals = [...new Set(allData.map(r => r.deal))].sort();
+  let deals = [...new Set(allData.map(r => r.deal))].sort();
+  if (window._activeDeals) deals = deals.filter(d => window._activeDeals.has(d));
   const opts  = document.getElementById('dealCselOpts');
   const existing = opts.querySelector('[data-value=""]');
   opts.innerHTML = '';
@@ -1159,7 +1167,8 @@ function updateMselLabel() {
   else lbl.innerHTML = `<span class="msel-badge">${selectedLocs.size}</span> ${selectedLocs.size === 1 ? [...selectedLocs][0] : 'locations selected'}`;
 }
 function rebuildLocationDropdown() {
-  const pool = selectedDeal ? allData.filter(r => r.deal === selectedDeal) : allData;
+  let pool = selectedDeal ? allData.filter(r => r.deal === selectedDeal) : allData;
+  if (!selectedDeal && window._activeDeals) pool = pool.filter(r => window._activeDeals.has(r.deal));
   // Group by deal for display
   const byDeal = {};
   pool.forEach(r => {
@@ -1221,6 +1230,7 @@ function isFullDataMonth(r) {
 function onFilterChange() {
   const f = getFilters();
   filteredData = allData.filter(r => {
+    if (window._activeDeals && !window._activeDeals.has(r.deal)) return false;  // active deals only
     if (!isFullDataMonth(r)) return false;   // drop the in-progress month globally
     if (f.deal && r.deal !== f.deal) return false;
     if (f.locs.size > 0 && !f.locs.has(r.location)) return false;
@@ -1401,13 +1411,16 @@ async function fetchSummaryLOI() {
     // Locate the header row (the one containing "LOI" or "loi period" / "loi revenue")
     let headerIdx = -1;
     let colDeal = -1, colLOIRev = -1, colLOIPeriod = -1, colQoERev = -1, colQoEPeriod = -1, colCurRev = -1;
+    let colStatus = -1, colStage = -1;
     for (let i = 0; i < Math.min(data.length, 15); i++) {
       const row = (data[i] || []).map(c => (c || '').toLowerCase().trim());
       const hasLOI = row.some(c => c.includes('loi'));
       if (hasLOI) {
         headerIdx = i;
-        colDeal      = row.findIndex(c => c.includes('client') || c.includes('deal'));
+        colDeal      = row.findIndex(c => (c.includes('client') || c.includes('deal')) && !c.includes('status') && !c.includes('stage'));
         if (colDeal === -1) colDeal = row.findIndex(c => c.length > 1 && !c.includes('loi') && !c.includes('qoe') && !c.includes('revenue') && !c.includes('var') && i === 0 ? false : c.length > 0);
+        colStatus    = row.findIndex(c => c.includes('status'));
+        colStage     = row.findIndex(c => c === 'stage' || c.includes('stage') || c.includes('deal stage') || c.includes('current stage'));
         colLOIPeriod = row.findIndex(c => c.includes('loi') && c.includes('period'));
         colLOIRev    = row.findIndex(c => c.includes('loi') && (c.includes('revenue') || c.includes('rev') || c.includes('adj')));
         if (colLOIRev === -1) colLOIRev = row.findIndex(c => c.includes('loi') && !c.includes('period'));
@@ -1437,6 +1450,14 @@ async function fetchSummaryLOI() {
 
     let changed = false;
     const sheetLOI = {};   // keyed by deal name → { loi, loiPeriod, qoe, qoePeriod, current }
+    const dealMeta = {};   // keyed by deal name → { active, statusRaw, stage }
+    // A deal counts as active unless its status clearly says otherwise.
+    const isActiveStatus = (v) => {
+      v = (v || '').toLowerCase().trim();
+      if (!v) return false;
+      if (/in-?active|closed|dead|lost|pass|drop|withdraw|terminat|kill|declin|on\s*hold|\bhold\b|stall|paus/.test(v)) return false;
+      return /activ|live|open|ongoing|pursu|in\s*progress|in-progress|\bwip\b|current|under\s*loi|diligence|closing/.test(v) ? true : false;
+    };
     for (let i = headerIdx + 1; i < data.length; i++) {
       const row = data[i] || [];
       // Find the deal name — try colDeal first, else scan for any non-empty non-numeric
@@ -1454,6 +1475,14 @@ async function fetchSummaryLOI() {
       const dealName = fuzzyMatch(rawName);
       if (!dealName) continue;
 
+      const statusRaw = colStatus >= 0 ? (row[colStatus] || '').trim() : '';
+      const stageRaw  = colStage  >= 0 ? (row[colStage]  || '').trim() : '';
+      dealMeta[dealName] = {
+        active: colStatus >= 0 ? isActiveStatus(statusRaw) : true,  // no status col => don't hide
+        statusRaw,
+        stage: stageRaw,
+      };
+
       const loiRevRaw = colLOIRev >= 0 ? (row[colLOIRev] || '') : '';
       const loiRev    = parseNum(loiRevRaw);
       const loiPer    = colLOIPeriod >= 0 ? (row[colLOIPeriod] || '').trim() : '';
@@ -1466,6 +1495,19 @@ async function fetchSummaryLOI() {
         if (loiConfig[dealName] !== loiRev) { loiConfig[dealName] = loiRev; changed = true; }
       }
     }
+
+    window._dealMeta = dealMeta;
+    // Enforce active-only filtering only when a "deal status" column was found.
+    // Restrict to deals positively marked active. If a status column exists but
+    // zero deals resolved as active (e.g. a name-match miss), fall back to showing
+    // all so the dashboard never goes unexpectedly blank.
+    if (colStatus >= 0) {
+      const activeSet = new Set(Object.keys(dealMeta).filter(d => dealMeta[d].active));
+      window._activeDeals = activeSet.size > 0 ? activeSet : null;
+    } else {
+      window._activeDeals = null;
+    }
+    window._summaryLoaded = true;
 
     if (Object.keys(sheetLOI).length) {
       window._sheetLOI = sheetLOI;   // store for display in LOI Config tab
@@ -1493,7 +1535,8 @@ function saveLOI() {
 }
 function buildLoiGrid() {
   const grid = document.getElementById('loiGrid');
-  grid.innerHTML = DEALS.map(d => {
+  const dealsToShow = window._activeDeals ? DEALS.filter(d => window._activeDeals.has(d.name)) : DEALS;
+  grid.innerHTML = dealsToShow.map(d => {
     const id  = 'loiInp_' + d.name.replace(/\W/g,'_');
     const val = loiConfig[d.name];
     const loaded = loadedDeals.includes(d.name);
@@ -1533,6 +1576,11 @@ function fmtPct(n, sign = false) {
 }
 function numFmt(n) { return Math.round(n).toLocaleString(); }
 function fmtK(n)   { return n ? numFmt(Math.round(n)) : '—'; }
+function esc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
 
 /* ════════════════════════════════════════════════════════════
    CHART HELPERS
@@ -2274,7 +2322,7 @@ function renderDealSummary() {
   if (!body) return;
   const activeDealNames = [...new Set(filteredData.map(r => r.deal))].sort();
   if (!activeDealNames.length) {
-    body.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text3);padding:20px;">No data loaded</td></tr>';
+    body.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text3);padding:20px;">No data loaded</td></tr>';
     return;
   }
   body.innerHTML = activeDealNames.map(dealName => {
@@ -2287,11 +2335,16 @@ function renderDealSummary() {
     const dates      = dealRows.filter(r=>r.date).map(r=>r.date.getTime());
     const latest     = dates.length ? new Date(Math.max(...dates)) : null;
     const varCol     = varD == null ? '' : varD >= 0 ? 'var(--green)' : 'var(--red)';
+    const stage      = (window._dealMeta && window._dealMeta[dealName] && window._dealMeta[dealName].stage) || '';
+    const stageHtml  = stage
+      ? `<span class="stage-badge">${esc(stage)}</span>`
+      : '<span style="color:var(--text3);font-size:11px">—</span>';
     const pctHtml    = varP != null
       ? `<span class="yoy-badge ${varP>=0?'pos':'neg'}">${varP>=0?'↑ +':'↓ '}${(varP*100).toFixed(1)}%</span>`
       : '<span style="color:var(--text3);font-size:11px">Set in LOI Config</span>';
     return `<tr>
       <td class="l deal-name">${dealName}</td>
+      <td class="l">${stageHtml}</td>
       <td class="l period-lbl">${ttm ? ttm.periodLabel : '—'}</td>
       <td style="font-weight:600">${ttm ? fmtM(ttm.amount, true) : '—'}</td>
       <td>${loi ? fmtM(loi, true) : '<span style="color:var(--text3);font-size:11px">—</span>'}</td>
@@ -2339,8 +2392,9 @@ async function init() {
   document.getElementById('lastUpdated').textContent = 'Loading…';
   loadLOI();
 
-  // Fetch LOI from Summary tab in background — does NOT block the main load
-  fetchSummaryLOI().catch(() => {});
+  // Fetch LOI + deal status/stage from the Summary tab in parallel with the main
+  // data load. We await it (below) before filtering so active-only + stage are ready.
+  const summaryReady = fetchSummaryLOI().catch(() => {});
 
   try {
     await loadAllData();
@@ -2358,6 +2412,8 @@ async function init() {
     document.getElementById('lastUpdated').textContent =
       `Loaded ${now.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})} · ${loadedDeals.length} of ${DEALS.length} tabs`;
     document.getElementById('statusDot').className = loadErrors.length ? 'dot amber' : 'dot green';
+
+    await summaryReady;   // ensure deal status/stage are loaded before filtering to active deals
 
     buildDealDropdown();
     rebuildLocationDropdown();
