@@ -1414,6 +1414,15 @@ function revenueStatus(ttm, loi) {
   return            { label: 'Underperforming', cls: 'under'   };       // lower by >5%
 }
 
+/* Colors matching the .rev-badge palette, keyed by status class. Used so the
+   $ Variance / % Variance figures take the same color as the Revenue Status badge. */
+const STATUS_COLOR = {
+  out:     'var(--green)',
+  aligned: '#3C8B63',
+  watch:   'var(--amber)',
+  under:   'var(--red)',
+};
+
 function calcRollingTTM(monthly) {
   let sorted = [...monthly].sort((a,b) => a.key.localeCompare(b.key));
   sorted = trimTrailingPartial(sorted);
@@ -1867,7 +1876,8 @@ function renderTTMvsLOI(monthly) {
 
   if (ttm && loiTotal) {
     const vD = ttm.amount - loiTotal, vP = vD / loiTotal;
-    const col = vD >= 0 ? 'var(--green)' : 'var(--red)';
+    const st = revenueStatus(ttm.amount, loiTotal);
+    const col = st ? STATUS_COLOR[st.cls] : (vD >= 0 ? 'var(--green)' : 'var(--red)');
     set('cmpVarD',    (vD >= 0 ? '+' : '') + fmtM(vD, true));
     set('cmpVarDSub', 'vs. LOI baseline');
     set('cmpVarP',    fmtPct(vP, true));
