@@ -917,7 +917,7 @@ table.dt td.neg   { color: var(--red);   font-weight: 600; }
       <div class="tbl-head">
         <div>
           <div class="tbl-head-title">Rolling Period vs Prior Year — by Location</div>
-          <div class="tbl-head-sub" id="periodSpotlightSub">3 most recent periods · current year vs same period prior year</div>
+          <div class="tbl-head-sub" id="periodSpotlightSub">3 most recent full months · current year vs same month prior year</div>
         </div>
         <div class="tbl-head-meta" id="periodSpotlightMeta"></div>
       </div>
@@ -1400,18 +1400,18 @@ function calcTTM(monthly) {
 
 /* Classify current TTM revenue against the LOI baseline.
    varP = (TTM − LOI) / LOI:
-     >  +1%            → Outperforming
-     within ±1%        → Aligned       (lower by <1% or higher by ≤1%)
-     lower by 1–5%     → Watch
-     lower by >5%      → Underperforming
+     ≥ +2%             → Outperforming
+     0% to <+2%        → Aligned
+     <0% to ≥ −2%      → Watch
+     < −2%             → Underperforming
    Returns null when TTM or a positive LOI isn't available. */
 function revenueStatus(ttm, loi) {
   if (ttm == null || loi == null || !(loi > 0)) return null;
   const v = (ttm - loi) / loi;
-  if (v >  0.01) return { label: 'Outperforming',   cls: 'out'     };
-  if (v > -0.01) return { label: 'Aligned',         cls: 'aligned' };  // -1% < v ≤ +1%
-  if (v >= -0.05) return { label: 'Watch',          cls: 'watch'   };  // lower by 1–5%
-  return            { label: 'Underperforming', cls: 'under'   };       // lower by >5%
+  if (v >=  0.02) return { label: 'Outperforming',   cls: 'out'     };  // ≥ +2%
+  if (v >=  0)    return { label: 'Aligned',         cls: 'aligned' };  // 0% to <+2%
+  if (v >= -0.02) return { label: 'Watch',           cls: 'watch'   };  // <0% to ≥ −2%
+  return            { label: 'Underperforming',  cls: 'under'   };       // < −2%
 }
 
 /* Colors matching the .rev-badge palette, keyed by status class. Used so the
@@ -2087,17 +2087,28 @@ function renderPeriodSpotlight() {
   if (lbl) lbl.textContent = isMonthly
     ? 'Revenue Period Analysis · Month T / T-1 / T-2'
     : 'Revenue Period Analysis · Week T / T-1 / T-2';
-  if (sub) sub.textContent = `3 most recent ${isMonthly ? 'months' : 'weeks'} · current year vs same period prior year · per location`;
+  if (sub) sub.textContent = isMonthly
+    ? '3 most recent full months · current year vs same month prior year · per location'
+    : '3 most recent weeks · current year vs same period prior year · per location';
 
-  // Collect all period keys present in filtered data
-  const periodSet = new Set();
-  filteredData.forEach(r => {
-    if (isMonthly && r.year && r.monthNum)
-      periodSet.add(`${r.year}-${String(r.monthNum).padStart(2,'0')}`);
-    else if (!isMonthly && r.year && r.week)
-      periodSet.add(`${r.year}-${String(r.week).padStart(2,'0')}`);
-  });
-  const periods = [...periodSet].sort().slice(-3);   // [T-2, T-1, T]
+  // Determine the candidate periods.
+  // MONTHLY view → the 3 most recent FULL months: drop any in-progress current
+  // calendar month, then roll back past any trailing partial month using the
+  // same day-count test as TTM, and take the last 3 keys.
+  // WEEKLY view  → unchanged: the 3 most recent weeks present in the data.
+  let periods;
+  if (isMonthly) {
+    let months = aggregateMonthly(filteredData)
+      .filter(m => !isCurrentMonthKey(m.key));   // never count the in-progress month
+    months = trimTrailingPartial(months);        // roll back to the most recent FULL month
+    periods = months.map(m => m.key).sort().slice(-3);   // [T-2, T-1, T]
+  } else {
+    const periodSet = new Set();
+    filteredData.forEach(r => {
+      if (r.year && r.week) periodSet.add(`${r.year}-${String(r.week).padStart(2,'0')}`);
+    });
+    periods = [...periodSet].sort().slice(-3);   // [T-2, T-1, T]
+  }
   if (!periods.length) {
     tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--text3);padding:16px;">Not enough period data</td></tr>';
     return;
