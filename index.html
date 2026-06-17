@@ -4,7 +4,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SP USA | Dental Practice Dashboard</title>
+<title>SPUSA | Pipeline Sales Dashboard</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -22,7 +22,7 @@
   --border:   #DDE2EE;
   --border2:  #C8CFE0;
 
-  --navy:     #1B3564;   /* SP USA deep navy — primary */
+  --navy:     #1B3564;   /* SPUSA deep navy — primary */
   --navy-lt:  #2A4B8C;
   --green:    #1B6E45;   /* positive/up */
   --green-lt: rgba(27,110,69,0.10);
@@ -366,6 +366,38 @@ input[type="date"]:focus { outline: none; border-color: var(--navy); }
 .kpi-value.sm { font-size: 16px; letter-spacing: -0.2px; }
 .kpi-sub { font-size: 11px; color: var(--text2); }
 
+/* ── RAG BANDS (override base color bars on operating tiles) ── */
+.kpi-card.rag-green::before { background: var(--green); }
+.kpi-card.rag-amber::before { background: var(--amber); }
+.kpi-card.rag-red::before   { background: var(--red); }
+.rag-chip {
+  display: inline-block; font-size: 9px; font-weight: 700;
+  padding: 1px 7px; border-radius: 10px; margin-left: 6px;
+  vertical-align: middle; letter-spacing: 0.2px;
+}
+.rag-chip:empty { display: none; }
+.rag-chip.green { background: var(--green-lt); color: var(--green); }
+.rag-chip.amber { background: var(--amber-lt); color: var(--amber); }
+.rag-chip.red   { background: var(--red-lt);   color: var(--red); }
+.rag-chip.gray  { background: var(--surface3); color: var(--text3); }
+.rag-legend {
+  font-size: 11px; color: var(--text2); margin-bottom: 14px;
+  display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
+}
+.rag-legend-note { color: var(--text3); }
+
+/* ── FORWARD RUN-RATE BRIDGE ────────────────────────────────── */
+.rr-sub { font-size: 12px; color: var(--text2); margin-bottom: 16px; }
+.rr-bridge { margin-top: 22px; display: flex; flex-direction: column; gap: 10px; }
+.rr-bar-row { display: grid; grid-template-columns: 180px 1fr 120px; align-items: center; gap: 12px; }
+.rr-bar-label { font-size: 11px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: 0.4px; }
+.rr-bar-track { background: var(--surface3); border-radius: 4px; height: 22px; position: relative; overflow: hidden; }
+.rr-bar-fill { height: 100%; border-radius: 4px; transition: width 0.4s; }
+.rr-bar-fill.loi  { background: var(--navy); }
+.rr-bar-fill.curr { background: var(--green); }
+.rr-bar-fill.proj { background: var(--blue); }
+.rr-bar-val { font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
+
 /* ── TTM vs LOI BLOCK ────────────────────────────────────── */
 .ttm-block {
   background: var(--surface);
@@ -568,7 +600,7 @@ table.dt td.neg   { color: var(--red);   font-weight: 600; }
 <div id="loadingOverlay">
   <div class="loading-logo">
     <img src="https://smilepartnersusa.com/wp-content/uploads/2025/10/SPUSA_Logo-1.png"
-         alt="SP USA" style="height:36px;object-fit:contain;"
+         alt="SPUSA" style="height:36px;object-fit:contain;"
          onerror="this.style.display='none'">
     <div class="loading-sep"></div>
     <img src="https://www.stocadvisory.com/_next/image?url=%2Fstoc-main-logo-cropped.png&w=256&q=75"
@@ -585,11 +617,11 @@ table.dt td.neg   { color: var(--red);   font-weight: 600; }
   <div class="header-left">
     <img class="header-logo-sp"
          src="https://smilepartnersusa.com/wp-content/uploads/2025/10/SPUSA_Logo-1.png"
-         alt="SP USA"
-         onerror="this.replaceWith(Object.assign(document.createElement('span'),{textContent:'SP USA',style:'font-size:18px;font-weight:900;color:#fff;letter-spacing:-0.5px'}))">
+         alt="SPUSA"
+         onerror="this.replaceWith(Object.assign(document.createElement('span'),{textContent:'SPUSA',style:'font-size:18px;font-weight:900;color:#fff;letter-spacing:-0.5px'}))">
     <div class="header-sep"></div>
     <div>
-      <div class="header-title">Dental Practice Performance Dashboard</div>
+      <div class="header-title">Pipeline Sales Dashboard</div>
       <div class="header-sub">Production &amp; Collection Tracker · Live Data</div>
     </div>
   </div>
@@ -718,52 +750,77 @@ table.dt td.neg   { color: var(--red);   font-weight: 600; }
       <div class="chart-wrap"><canvas id="ttmTrendChart" height="170"></canvas></div>
     </div>
 
+    <div class="sec-head"><span class="sec-title">Forward Run-Rate &amp; Bridge</span><span class="sec-rule"></span></div>
+    <div class="ttm-block" style="margin-bottom:24px">
+      <div class="rr-sub" id="rrBasis">Annualizing the most recent full weeks of collections.</div>
+      <div class="cmp-grid">
+        <div class="cmp-card">
+          <div class="cmp-label">LOI Baseline (Underwritten)</div>
+          <div class="cmp-value" id="rrLOI" style="color:var(--navy)">—</div>
+          <div class="cmp-sub">Annual LOI revenue · in scope</div>
+        </div>
+        <div class="cmp-card">
+          <div class="cmp-label">Current Annualized Run-Rate</div>
+          <div class="cmp-value" id="rrCurrent" style="color:var(--green)">—</div>
+          <div class="cmp-sub" id="rrCurrentSub">Last full weeks × 52</div>
+        </div>
+        <div class="cmp-card">
+          <div class="cmp-label">Projected Full Year</div>
+          <div class="cmp-value" id="rrProjFY" style="color:var(--blue)">—</div>
+          <div class="cmp-sub" id="rrProjFYSub">YTD actual + run-rate</div>
+        </div>
+        <div class="cmp-card">
+          <div class="cmp-label">Run-Rate vs LOI</div>
+          <div class="cmp-value" id="rrVar">—</div>
+          <div class="cmp-sub">Holding the underwrite?</div>
+        </div>
+      </div>
+      <div class="rr-bridge" id="rrBridge"></div>
+    </div>
+
     <div class="sec-head"><span class="sec-title">Key Performance Indicators</span><span class="sec-rule"></span></div>
+    <div class="rag-legend">
+      RAG vs. each deal's own history (latest full month vs. trailing median):
+      <span class="rag-chip green">● Green</span> at/above median
+      <span class="rag-chip amber">● Amber</span> 3–10% below
+      <span class="rag-chip red">● Red</span> &gt;10% below
+      <span class="rag-legend-note">· rates banded in pp · calibrate per deal before locking</span>
+    </div>
     <div class="kpi-grid" style="margin-bottom:24px">
-      <div class="kpi-card">
+      <div class="kpi-card" data-op>
         <div class="kpi-label">TTM Revenue</div>
         <div class="kpi-value" id="kpiTTM">—</div>
-        <div class="kpi-sub" id="kpiTTMPeriod">Trailing 12 months</div>
+        <div class="kpi-sub" id="kpiTTMPeriod">Trailing 12 months<span class="rag-chip" id="ragTTM"></span></div>
       </div>
-      <div class="kpi-card blue">
+      <div class="kpi-card blue" data-op>
         <div class="kpi-label">Total Charge Amount</div>
         <div class="kpi-value" id="kpiCharge">—</div>
-        <div class="kpi-sub">Selected period</div>
+        <div class="kpi-sub">Gross charges · selected period<span class="rag-chip" id="ragCharge"></span></div>
       </div>
-      <div class="kpi-card green">
+      <div class="kpi-card green" data-op>
         <div class="kpi-label">Total Revenue</div>
         <div class="kpi-value" id="kpiCollections">—</div>
-        <div class="kpi-sub">Selected period</div>
+        <div class="kpi-sub">Collections · selected period<span class="rag-chip" id="ragColl"></span></div>
       </div>
-      <div class="kpi-card amber">
-        <div class="kpi-label">Avg Production / Encounter</div>
-        <div class="kpi-value" id="kpiProdPerEnc">—</div>
-        <div class="kpi-sub">Charges ÷ encounters</div>
+      <div class="kpi-card amber" data-op>
+        <div class="kpi-label">Adj. Collection Rate</div>
+        <div class="kpi-value" id="kpiAdjCollRate">—</div>
+        <div class="kpi-sub">Collections ÷ gross charges<span class="rag-chip" id="ragRate"></span></div>
       </div>
-      <div class="kpi-card amber">
-        <div class="kpi-label">Avg Production / Procedure</div>
-        <div class="kpi-value" id="kpiProdPerProc">—</div>
-        <div class="kpi-sub">Charges ÷ procedures</div>
+      <div class="kpi-card blue" data-op>
+        <div class="kpi-label">Production / Provider-Day</div>
+        <div class="kpi-value" id="kpiProvDay">—</div>
+        <div class="kpi-sub" id="kpiProvDaySub">Charges ÷ qualifying days<span class="rag-chip" id="ragProvDay"></span></div>
       </div>
-      <div class="kpi-card blue">
-        <div class="kpi-label">Encounters / Day</div>
-        <div class="kpi-value" id="kpiEncPerDay">—</div>
-        <div class="kpi-sub">Per working day</div>
-      </div>
-      <div class="kpi-card blue">
-        <div class="kpi-label">Avg Daily Production</div>
-        <div class="kpi-value" id="kpiAvgDaily">—</div>
-        <div class="kpi-sub" id="kpiAvgDailySub">Per working day</div>
-      </div>
-      <div class="kpi-card">
+      <div class="kpi-card" data-op>
         <div class="kpi-label">Patient Encounters</div>
         <div class="kpi-value" id="kpiEncounters">—</div>
-        <div class="kpi-sub">Total encounters</div>
+        <div class="kpi-sub">Total encounters<span class="rag-chip" id="ragEnc"></span></div>
       </div>
-      <div class="kpi-card">
+      <div class="kpi-card" data-op>
         <div class="kpi-label">Procedures / Txns</div>
         <div class="kpi-value" id="kpiProcedures">—</div>
-        <div class="kpi-sub">Total procedures</div>
+        <div class="kpi-sub">Total procedures<span class="rag-chip" id="ragProc"></span></div>
       </div>
       <div class="kpi-card gray">
         <div class="kpi-label">Active Locations</div>
@@ -953,7 +1010,7 @@ table.dt td.neg   { color: var(--red);   font-weight: 600; }
 </main>
 
 <footer class="footer">
-  SP USA Dental Practice Dashboard · Built by STOC Advisory ·
+  SPUSA | Pipeline Sales Dashboard · Built by STOC Advisory ·
   Data sourced from Google Sheets Import tabs · No raw data upload required ·
   Refreshes on demand
 </footer>
@@ -1018,6 +1075,13 @@ let loadErrors   = [];
 let loadedDeals  = [];
 let selectedDeal = '';          // '' = all
 let selectedLocs = new Set();   // empty = all
+
+/* Canonical display name for a deal. Single source of truth so every label
+   across the dashboard is identical and matches Column B ("Client Deals") of
+   the Summary sheet. Falls back to the internal name until Summary loads. */
+function dispName(internal) {
+  return (window._dealDisplayName && window._dealDisplayName[internal]) || internal;
+}
 
 /* ════════════════════════════════════════════════════════════
    DATA FETCHING
@@ -1155,8 +1219,8 @@ function buildDealDropdown() {
     const div = document.createElement('div');
     div.className = 'csel-opt' + (d === selectedDeal ? ' selected' : '');
     div.dataset.value = d;
-    div.textContent = d;
-    div.onclick = () => selectCsel('dealCsel', d, d);
+    div.textContent = dispName(d);
+    div.onclick = () => selectCsel('dealCsel', d, dispName(d));
     opts.appendChild(div);
   });
 }
@@ -1204,7 +1268,7 @@ function rebuildLocationDropdown() {
     if (deals.length > 1) {
       const grp = document.createElement('div');
       grp.className = 'msel-deal-group';
-      grp.textContent = deal;
+      grp.textContent = dispName(deal);
       container.appendChild(grp);
     }
     [...byDeal[deal]].sort().forEach(loc => {
@@ -1492,7 +1556,7 @@ async function fetchSummaryLOI() {
       if (hasLOI) {
         headerIdx = i;
         colDeal      = row.findIndex(c => (c.includes('client') || c.includes('deal')) && !c.includes('status') && !c.includes('stage'));
-        if (colDeal === -1) colDeal = row.findIndex(c => c.length > 1 && !c.includes('loi') && !c.includes('qoe') && !c.includes('revenue') && !c.includes('var') && i === 0 ? false : c.length > 0);
+        if (colDeal === -1) colDeal = 1;   // default to Column B ("Client Deals")
         colStatus    = row.findIndex(c => c.includes('status'));
         colStage     = row.findIndex(c => c === 'stage' || c.includes('stage') || c.includes('deal stage') || c.includes('current stage'));
         colLOIPeriod = row.findIndex(c => c.includes('loi') && c.includes('period'));
@@ -1525,6 +1589,7 @@ async function fetchSummaryLOI() {
     let changed = false;
     const sheetLOI = {};   // keyed by deal name → { loi, loiPeriod, qoe, qoePeriod, current }
     const dealMeta = {};   // keyed by deal name → { active, statusRaw, stage }
+    const dealDisplay = {};// keyed by deal name → exact "Client Deals" (Col B) text
     // A deal counts as active unless its status clearly says otherwise.
     const isActiveStatus = (v) => {
       v = (v || '').toLowerCase().trim();
@@ -1549,6 +1614,11 @@ async function fetchSummaryLOI() {
       const dealName = fuzzyMatch(rawName);
       if (!dealName) continue;
 
+      // Canonical display name = exact "Client Deals" (Column B) text from the
+      // Summary sheet. Used everywhere a deal name is shown so labels are
+      // identical across the whole dashboard.
+      dealDisplay[dealName] = rawName;
+
       const statusRaw = colStatus >= 0 ? (row[colStatus] || '').trim() : '';
       const stageRaw  = colStage  >= 0 ? (row[colStage]  || '').trim() : '';
       dealMeta[dealName] = {
@@ -1571,6 +1641,7 @@ async function fetchSummaryLOI() {
     }
 
     window._dealMeta = dealMeta;
+    window._dealDisplayName = dealDisplay;
     // Enforce active-only filtering only when a "deal status" column was found.
     // Restrict to deals positively marked active. If a status column exists but
     // zero deals resolved as active (e.g. a name-match miss), fall back to showing
@@ -1619,7 +1690,7 @@ function buildLoiGrid() {
       ? `<span style="color:var(--accent);font-size:9px;font-weight:700;margin-left:4px">● from sheet${sheetSrc.loiPeriod ? ' · ' + sheetSrc.loiPeriod : ''}</span>`
       : '';
     return `<div class="loi-item">
-      <div class="loi-deal">${d.name}
+      <div class="loi-deal">${dispName(d.name)}
         ${loaded ? '<span style="color:var(--green);font-size:9px">● data loaded</span>' : '<span style="color:var(--text4);font-size:9px">● no data</span>'}
         ${sheetBadge}
       </div>
@@ -1831,27 +1902,259 @@ function renderKPIs(monthly) {
   const tAdj = d.reduce((s,r) => s + r.adjCollections, 0);
   const tPrc = d.reduce((s,r) => s + r.procedures,     0);
   const tEnc = d.reduce((s,r) => s + r.encounters,     0);
-  const days = new Set(d.filter(r=>r.date).map(r=>r.date.toDateString())).size;
   const locs = [...new Set(d.map(r=>r.location).filter(Boolean))];
   const ttm  = calcTTM(monthly);
   const dates = d.filter(r=>r.date).map(r=>r.date.getTime());
   const latest = dates.length ? new Date(Math.max(...dates)) : null;
 
+  // Adjusted collection rate (realization) = collections ÷ gross charges
+  const adjRate = tC > 0 ? tAdj / tC : null;
+
+  // Production per provider-day on QUALIFYING days only (day's gross charges
+  // must exceed half the median daily gross charge — threshold is per-scope).
+  const ppd = prodPerProviderDay(d);
+
   set('kpiTTM',        ttm ? fmtM(ttm.amount, true) : '—');
   set('kpiTTMPeriod',  ttm ? ttm.periodLabel + (ttm.isPartial ? ` (${ttm.months}mo)` : '') : 'Insufficient data');
   set('kpiCharge',     fmtM(tC, true));
   set('kpiCollections',fmtM(tAdj, true));
-  set('kpiProdPerEnc',  tEnc > 0 ? '$' + numFmt(Math.round(tC / tEnc)) : '—');
-  set('kpiProdPerProc', tPrc > 0 ? '$' + numFmt(Math.round(tC / tPrc)) : '—');
-  set('kpiEncPerDay',   days > 0 ? (tEnc / days).toFixed(1) : '—');
-  set('kpiAvgDaily',   fmtM(days > 0 ? tC/days : null, true));
-  set('kpiAvgDailySub',`Across ${days} working days`);
+  set('kpiAdjCollRate', adjRate != null ? (adjRate*100).toFixed(1) + '%' : '—');
+  set('kpiProvDay',    ppd.value != null ? fmtM(ppd.value, true) : '—');
+  set('kpiProvDaySub', ppd.value != null
+        ? `${ppd.qualDays} of ${ppd.totalDays} days · cut ${fmtM(ppd.threshold,true)}`
+        : 'No qualifying days');
   set('kpiEncounters', tEnc ? numFmt(tEnc) : '—');
   set('kpiProcedures', tPrc ? numFmt(tPrc) : '—');
   set('kpiLocations',  locs.length);
   set('kpiLocationsSub', locs.length ? locs.slice(0,4).join(', ') + (locs.length>4 ? ` +${locs.length-4} more` : '') : 'None');
   set('kpiLatestDate', latest ? latest.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—');
+
+  applyTileRAG();
 }
+
+/* ════════════════════════════════════════════════════════════
+   RAG BANDS  ·  dynamic, calibrated to each deal's own history
+   ────────────────────────────────────────────────────────────
+   Method: build the in-scope monthly series (deal + location filters
+   applied, date-range ignored so the baseline uses full deal history),
+   then compare the LATEST FULL MONTH of each metric to the MEDIAN of all
+   prior months. Bands:
+     • level metrics (revenue, charges, encounters, procedures, prod/day)
+         green: latest ≥ 97% of median   (at/above its own norm)
+         amber: 90%–97% of median        (3–10% soft)
+         red:   < 90% of median          (>10% below — investigate)
+     • rate metrics (adj. collection rate) banded in percentage POINTS
+         green: ≥ median − 1pp | amber: median−3pp..−1pp | red: < median−3pp
+   Needs ≥3 prior full months to fire; otherwise shows "n/a".
+   ════════════════════════════════════════════════════════════ */
+function median(arr) {
+  const v = arr.filter(x => x != null && !isNaN(x)).sort((a,b) => a-b);
+  if (!v.length) return null;
+  const m = Math.floor(v.length/2);
+  return v.length % 2 ? v[m] : (v[m-1]+v[m])/2;
+}
+
+function ragBand(series, { pp = false } = {}) {
+  const vals = series.filter(x => x != null && !isNaN(x));
+  if (vals.length < 4) return null;                 // need latest + ≥3 prior
+  const latest = vals[vals.length-1];
+  const base   = median(vals.slice(0, -1));
+  if (base == null || base === 0) return null;
+  if (pp) {
+    const delta = (latest - base) * 100;            // percentage points
+    const cls = delta >= -1 ? 'green' : delta >= -3 ? 'amber' : 'red';
+    return { cls, base, latest, txt: `${delta>=0?'+':''}${delta.toFixed(1)}pp vs med` };
+  }
+  const ratio = latest / base;
+  const cls = ratio >= 0.97 ? 'green' : ratio >= 0.90 ? 'amber' : 'red';
+  return { cls, base, latest, txt: `${Math.round(ratio*100)}% of med` };
+}
+
+/* In-scope rows for RAG calibration: respect active + deal + location
+   filters but IGNORE the date-range picker so the baseline is the deal's
+   full operating history. Current in-progress month is still excluded. */
+function ragScopeRows() {
+  const f = getFilters();
+  return allData.filter(r => {
+    if (window._activeDeals && !window._activeDeals.has(r.deal)) return false;
+    if (!isFullDataMonth(r)) return false;
+    if (f.deal && r.deal !== f.deal) return false;
+    if (f.locs.size > 0 && !f.locs.has(r.location)) return false;
+    return true;
+  });
+}
+
+function applyTileRAG() {
+  const rows    = ragScopeRows();
+  const mSeries = trimTrailingPartial(aggregateMonthly(rows));
+
+  const setChip = (chipId, band) => {
+    const el = document.getElementById(chipId);
+    if (!el) return;
+    const card = el.closest('.kpi-card');
+    if (card) card.classList.remove('rag-green','rag-amber','rag-red');
+    if (!band) { el.className = 'rag-chip gray'; el.textContent = 'n/a'; return; }
+    el.className = 'rag-chip ' + band.cls;
+    el.textContent = band.txt;
+    if (card) card.classList.add('rag-' + band.cls);
+  };
+
+  setChip('ragTTM',    ragBand(mSeries.map(m => m.adjCollections)));
+  setChip('ragColl',   ragBand(mSeries.map(m => m.adjCollections)));
+  setChip('ragCharge', ragBand(mSeries.map(m => m.chargeAmount)));
+  setChip('ragRate',   ragBand(mSeries.map(m => m.collRate), { pp:true }));
+  setChip('ragEnc',    ragBand(mSeries.map(m => m.encounters)));
+  setChip('ragProc',   ragBand(mSeries.map(m => m.procedures)));
+  setChip('ragProvDay',ragBand(monthlyProvDaySeries(rows)));
+}
+
+/* ── Production / Provider-Day (qualifying-day method) ─────────────
+   A "provider-day" here is a distinct working day; the dataset carries no
+   provider headcount, so day count is the best available denominator.
+   Only days whose gross charges exceed HALF the median daily gross charge
+   are counted — this strips near-empty days so the figure reflects real
+   operating days. Daily-granularity rows only (monthly tabs have no day
+   detail). Returns charges-on-qualifying-days ÷ qualifying-day count. */
+function dailyChargeTotals(rows) {
+  const byDay = {};
+  rows.forEach(r => {
+    if (r.granularity !== 'daily' || !r.date) return;
+    const k = r.date.toDateString();
+    byDay[k] = (byDay[k] || 0) + r.chargeAmount;
+  });
+  return byDay;
+}
+function prodPerProviderDay(rows) {
+  const byDay = dailyChargeTotals(rows);
+  const totals = Object.values(byDay).filter(v => v > 0);
+  if (totals.length < 2) return { value:null, qualDays:0, totalDays:totals.length, threshold:0, median:0 };
+  const med = median(totals);
+  const cut = med * 0.5;
+  const qual = totals.filter(v => v > cut);
+  const sum  = qual.reduce((s,v) => s+v, 0);
+  return {
+    value: qual.length ? sum / qual.length : null,
+    qualDays: qual.length, totalDays: totals.length,
+    threshold: cut, median: med,
+  };
+}
+/* Per-month prod/provider-day series for RAG. Threshold is set ONCE at the
+   deal/scope level (median of all daily totals) so the cut is stable, then
+   applied within each month. */
+function monthlyProvDaySeries(rows) {
+  const allDaily = Object.values(dailyChargeTotals(rows)).filter(v => v > 0);
+  if (allDaily.length < 4) return [];
+  const cut = median(allDaily) * 0.5;
+  const byMonth = {};
+  rows.forEach(r => {
+    if (r.granularity !== 'daily' || !r.date) return;
+    const mk = `${r.year}-${String(r.monthNum).padStart(2,'0')}`;
+    const dk = r.date.toDateString();
+    byMonth[mk] = byMonth[mk] || {};
+    byMonth[mk][dk] = (byMonth[mk][dk] || 0) + r.chargeAmount;
+  });
+  return Object.keys(byMonth).sort().map(mk => {
+    const days = Object.values(byMonth[mk]).filter(v => v > cut);
+    if (!days.length) return null;
+    return days.reduce((s,v)=>s+v,0) / days.length;
+  }).filter(v => v != null);
+}
+
+/* ════════════════════════════════════════════════════════════
+   FORWARD RUN-RATE & BRIDGE
+   ────────────────────────────────────────────────────────────
+   Annualize the most recent full weeks of collections (default last 8;
+   uses fewer down to 4 if that's all that's clean). Builds the bridge:
+   LOI baseline (underwritten annual) → current annualized run-rate
+   (avg full-week collections × 52) → projected full year (YTD actual
+   collections + run-rate × weeks remaining in the calendar year).
+   Weekly/daily-granularity deals only; in-progress and short trailing
+   weeks are dropped so the run-rate reflects complete weeks.
+   ════════════════════════════════════════════════════════════ */
+function renderRunRate() {
+  const f = getFilters();
+  // in-scope rows, date-range ignored, daily granularity (weekly needs weeks)
+  let rows = allData.filter(r => {
+    if (window._activeDeals && !window._activeDeals.has(r.deal)) return false;
+    if (f.deal && r.deal !== f.deal) return false;
+    if (f.locs.size > 0 && !f.locs.has(r.location)) return false;
+    return r.granularity === 'daily' && r.week;
+  });
+
+  const weekly = aggregateWeekly(rows);
+  // completeness: drop trailing weeks with day-count well below the median
+  let weeks = [...weekly].sort((a,b) => a.key.localeCompare(b.key));
+  const medDays = median(weeks.map(w => w.days)) || 5;
+  while (weeks.length > 4) {
+    const last = weeks[weeks.length-1];
+    if ((last.days || 0) < 0.6 * medDays) weeks = weeks.slice(0, -1);
+    else break;
+  }
+
+  const inScope = f.deal ? [f.deal] : [...new Set(filteredData.map(r=>r.deal))];
+  const loiTotal = inScope.filter(dn => loiConfig[dn] > 0)
+                          .reduce((s,dn) => s + loiConfig[dn], 0) || null;
+
+  const elBasis = document.getElementById('rrBasis');
+  const bridge  = document.getElementById('rrBridge');
+
+  if (weeks.length < 4) {
+    set('rrLOI', loiTotal ? fmtM(loiTotal, true) : '—');
+    set('rrCurrent', '—'); set('rrProjFY', '—'); set('rrVar', '—');
+    if (elBasis) elBasis.textContent = 'Not enough complete weekly data in scope to build a run-rate (need ≥4 full weeks of daily data).';
+    if (bridge) bridge.innerHTML = '';
+    return;
+  }
+
+  const N = Math.min(8, weeks.length);
+  const win = weeks.slice(-N);
+  const avgWeek = win.reduce((s,w) => s + w.adjCollections, 0) / N;
+  const annualized = avgWeek * 52;
+
+  // Projected full year = YTD actual (this calendar year, full weeks in scope)
+  // + run-rate × weeks remaining in the year.
+  const yr = new Date().getFullYear();
+  const ytdActual = weeks.filter(w => w.year === yr).reduce((s,w) => s + w.adjCollections, 0);
+  const lastWeekNo = win[win.length-1].week || 0;
+  const weeksRemaining = Math.max(0, 52 - lastWeekNo);
+  const projFY = ytdActual + avgWeek * weeksRemaining;
+
+  set('rrLOI', loiTotal ? fmtM(loiTotal, true) : '—');
+  set('rrCurrent', fmtM(annualized, true));
+  set('rrCurrentSub', `Avg of last ${N} full wk × 52 · ${fmtM(avgWeek,true)}/wk`);
+  set('rrProjFY', fmtM(projFY, true));
+  set('rrProjFYSub', `${yr} YTD ${fmtM(ytdActual,true)} + ${weeksRemaining}wk run-rate`);
+
+  if (loiTotal) {
+    const varP = (annualized - loiTotal) / loiTotal;
+    const el = document.getElementById('rrVar');
+    if (el) {
+      el.textContent = `${varP>=0?'+':''}${(varP*100).toFixed(1)}%`;
+      el.style.color = varP >= 0 ? 'var(--green)' : varP >= -0.02 ? 'var(--amber)' : 'var(--red)';
+    }
+  } else {
+    set('rrVar', '—');
+  }
+  if (elBasis) {
+    elBasis.textContent = `Annualizing the last ${N} complete weeks of collections in scope (avg ${fmtM(avgWeek,true)}/week). LOI = underwritten annual baseline.`;
+  }
+
+  // Bridge bars scaled to the largest of the three values
+  if (bridge) {
+    const maxV = Math.max(loiTotal || 0, annualized, projFY) || 1;
+    const bar = (label, cls, val) => `
+      <div class="rr-bar-row">
+        <div class="rr-bar-label">${label}</div>
+        <div class="rr-bar-track"><div class="rr-bar-fill ${cls}" style="width:${Math.max(2, (val/maxV)*100).toFixed(1)}%"></div></div>
+        <div class="rr-bar-val">${val ? fmtM(val, true) : '—'}</div>
+      </div>`;
+    bridge.innerHTML =
+      (loiTotal ? bar('LOI Baseline', 'loi', loiTotal) : '') +
+      bar('Current Run-Rate', 'curr', annualized) +
+      bar('Projected FY', 'proj', projFY);
+  }
+}
+
 
 function renderTTMvsLOI(monthly) {
   const ttm = calcTTM(monthly);
@@ -2057,10 +2360,10 @@ function renderPerfTable(periodData) {
 function renderAlerts() {
   const alerts = [];
   if (loadErrors.length) {
-    alerts.push({ t:'warn', m:`Could not load: ${loadErrors.map(e=>e.deal).join(', ')} (tabs may be empty or not yet created).` });
+    alerts.push({ t:'warn', m:`Could not load: ${loadErrors.map(e=>dispName(e.deal)).join(', ')} (tabs may be empty or not yet created).` });
   }
   if (filteredData.some(r => r.deal === 'Atlanta Endo')) {
-    alerts.push({ t:'warn', m:`Atlanta Endo data is at monthly granularity — weekly view excludes these records.` });
+    alerts.push({ t:'warn', m:`${dispName('Atlanta Endo')} data is at monthly granularity — weekly view excludes these records.` });
   }
   const monthly = aggregateMonthly(filteredData);
   const ttm = calcTTM(monthly);
@@ -2193,7 +2496,7 @@ function renderPeriodSpotlight() {
     }).join('');
     return `<tr>
       <td class="l" style="font-weight:600">${loc}</td>
-      <td class="l" style="font-size:11px;color:var(--text2)">${d.deal || ''}</td>
+      <td class="l" style="font-size:11px;color:var(--text2)">${d.deal ? esc(dispName(d.deal)) : ''}</td>
       ${periodCells}
     </tr>`;
   }).join('');
@@ -2275,7 +2578,7 @@ function renderLocationBreakdown() {
 
     return `<tr>
       <td class="l" style="font-weight:600;font-family:'Inter',-apple-system,sans-serif">${loc.location}</td>
-      <td class="l" style="font-family:'Inter',-apple-system,sans-serif;font-size:11px;color:var(--text2)">${loc.deal}</td>
+      <td class="l" style="font-family:'Inter',-apple-system,sans-serif;font-size:11px;color:var(--text2)">${esc(dispName(loc.deal))}</td>
       <td style="font-weight:600">${fmtM(loc.adjCollections, true)}</td>
       <td>${fmtM(loc.chargeAmount, true)}</td>
       <td>${loc.collRate != null ? fmtPct(loc.collRate) : '—'}</td>
@@ -2292,7 +2595,7 @@ function renderLocationBreakdown() {
     const dealSet = [...new Set(locs.map(l => l.deal))].sort();
     const prev = sel.value;
     sel.innerHTML = '<option value="">— pick a deal —</option>' +
-      dealSet.map(d => `<option value="${d}"${d===prev?' selected':''}>${d}</option>`).join('');
+      dealSet.map(d => `<option value="${esc(d)}"${d===prev?' selected':''}>${esc(dispName(d))}</option>`).join('');
     if (prev && dealSet.includes(prev)) renderLocDetail();
   }
 }
@@ -2312,7 +2615,7 @@ function renderLocDetail() {
     if (title) title.textContent = 'Select a deal';
     return;
   }
-  if (title) title.textContent = deal;
+  if (title) title.textContent = dispName(deal);
 
   /* All rows for this deal that have month/year */
   const rows = allData.filter(r => r.deal === deal && r.year && r.monthNum);
@@ -2449,7 +2752,7 @@ function renderDealSummary() {
       ? `<span class="rev-badge ${status.cls}">${status.label}</span>`
       : '<span style="color:var(--text3);font-size:11px">—</span>';
     return `<tr>
-      <td class="l deal-name">${dealName}</td>
+      <td class="l deal-name">${esc(dispName(dealName))}</td>
       <td class="l">${stageHtml}</td>
       <td class="l period-lbl">${ttm ? ttm.periodLabel : '—'}</td>
       <td style="font-weight:600">${ttm ? fmtM(ttm.amount, true) : '—'}</td>
@@ -2471,6 +2774,7 @@ function renderDashboard() {
   const periodData = currentView === 'monthly' ? monthly : weekly;
   renderAlerts();
   renderKPIs(monthly);
+  renderRunRate();
   renderDealSummary();
   renderTTMvsLOI(monthly);
   renderMainChart(periodData);
