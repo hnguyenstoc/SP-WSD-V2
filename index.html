@@ -78,6 +78,37 @@ body {
 .loading-text  { margin-top: 16px; color: var(--text2);  font-size: 14px; font-weight: 500; }
 .loading-detail{ margin-top: 5px;  color: var(--text3);  font-size: 12px; }
 
+/* ── AUTH GATE ───────────────────────────────────────────── */
+#authOverlay {
+  position: fixed; inset: 0;
+  background: var(--bg);
+  display: none;            /* shown by bootAuth() */
+  flex-direction: column; align-items: center; justify-content: center;
+  z-index: 100000; padding: 24px;
+}
+.auth-card {
+  background: var(--surface); border-radius: var(--radius);
+  box-shadow: var(--shadow-md);
+  padding: 34px 32px; width: 100%; max-width: 380px; text-align: center;
+}
+.auth-logo { display: flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: 22px; }
+.auth-logo img { height: 30px; object-fit: contain; }
+.auth-title { font-size: 15px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+.auth-sub   { font-size: 12px; color: var(--text2); margin-bottom: 20px; }
+.auth-input {
+  width: 100%; padding: 11px 13px; font-size: 14px;
+  border: 1.5px solid var(--border2); border-radius: var(--radius-sm);
+  font-family: 'Inter', -apple-system, sans-serif; margin-bottom: 12px;
+}
+.auth-input:focus { outline: none; border-color: var(--navy); }
+.auth-btn {
+  width: 100%; padding: 11px; font-size: 14px; font-weight: 600;
+  background: var(--navy); color: #fff; border: none;
+  border-radius: var(--radius-sm); cursor: pointer; transition: background 0.15s;
+}
+.auth-btn:hover { background: var(--navy-lt); }
+.auth-error { color: var(--red); font-size: 12px; margin-top: 12px; display: none; }
+
 /* ── HEADER ──────────────────────────────────────────────── */
 .header {
   background: var(--navy);
@@ -598,6 +629,21 @@ table.dt td.neg   { color: var(--red);   font-weight: 600; }
 </style>
 </head>
 <body>
+
+<!-- ── AUTH GATE ───────────────────────────────────────────── -->
+<div id="authOverlay">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <img src="https://smilepartnersusa.com/wp-content/uploads/2025/10/SPUSA_Logo-1.png"
+           alt="SPUSA" onerror="this.style.display='none'">
+    </div>
+    <div class="auth-title">Pipeline Sales Dashboard</div>
+    <div class="auth-sub">Enter the access password to continue</div>
+    <input id="authInput" class="auth-input" type="password" placeholder="Password" autocomplete="off">
+    <button class="auth-btn" onclick="tryAuth()">Unlock</button>
+    <div id="authError" class="auth-error">Incorrect password — please try again.</div>
+  </div>
+</div>
 
 <!-- ── LOADING ──────────────────────────────────────────────── -->
 <div id="loadingOverlay">
@@ -2802,7 +2848,51 @@ async function init() {
 
 async function refreshData() { await init(); }
 
-init();
+/* ════════════════════════════════════════════════════════════
+   ACCESS GATE
+   ─────────────────────────────────────────────────────────────
+   Lightweight front-end password gate. To change the password, set
+   DASH_PASSWORD_B64 to the base64 of the new password (run
+   btoa('your new password') in a browser console to generate it).
+   Note: this is a deterrent only — it is not server-side security.
+   ════════════════════════════════════════════════════════════ */
+const DASH_PASSWORD_B64 = 'U1BVU0EtUGlwZWxpbmUtMjAyNg==';   // base64 of the access password
+const AUTH_SESSION_KEY  = 'sp_dash_auth_v1';
+
+function unlockDashboard() {
+  const ov = document.getElementById('authOverlay');
+  if (ov) ov.style.display = 'none';
+  if (!window._dashBooted) { window._dashBooted = true; init(); }
+}
+
+function tryAuth() {
+  const inp = document.getElementById('authInput');
+  const err = document.getElementById('authError');
+  let ok = false;
+  try { ok = btoa(inp ? inp.value : '') === DASH_PASSWORD_B64; } catch { ok = false; }
+  if (ok) {
+    try { sessionStorage.setItem(AUTH_SESSION_KEY, '1'); } catch {}
+    unlockDashboard();
+  } else {
+    if (err) err.style.display = 'block';
+    if (inp) { inp.value = ''; inp.focus(); }
+  }
+}
+
+function bootAuth() {
+  let remembered = false;
+  try { remembered = sessionStorage.getItem(AUTH_SESSION_KEY) === '1'; } catch {}
+  if (remembered) { unlockDashboard(); return; }
+  const ov  = document.getElementById('authOverlay');
+  const inp = document.getElementById('authInput');
+  if (ov) ov.style.display = 'flex';
+  if (inp) {
+    inp.focus();
+    inp.addEventListener('keydown', e => { if (e.key === 'Enter') tryAuth(); });
+  }
+}
+
+bootAuth();
 </script>
 </body>
 </html>
