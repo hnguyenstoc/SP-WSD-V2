@@ -811,7 +811,7 @@ table.dt td.neg   { color: var(--red);   font-weight: 600; }
         <div class="cmp-card">
           <div class="cmp-label">Current Annualized Run-Rate</div>
           <div class="cmp-value" id="rrCurrent" style="color:var(--green)">—</div>
-          <div class="cmp-sub" id="rrCurrentSub">Annualize last 13 complete weeks</div>
+          <div class="cmp-sub" id="rrCurrentSub">Annualize 26 complete weeks prior to current week</div>
         </div>
         <div class="cmp-card">
           <div class="cmp-label">Run-Rate vs LOI</div>
@@ -1047,13 +1047,13 @@ const SHEET_ID = '1mZEY5qvUlpsL4xYANPeSTxp4_icm8C3Yw4qgdPTCCNI';
   Tabs with no data will be silently skipped (shown in status bar if they fail).
 */
 const DEALS = [
-  { name: 'Lakeview',               tab: 'Import-Lakeview',                   granularity: 'daily'   },
-  { name: 'Forest Dental',          tab: 'Import-Forest Dental',              granularity: 'daily'   },
-  { name: 'Kreit',                  tab: 'Import-Kreit',                      granularity: 'daily'   },
+  { name: 'Lakeview',               tab: 'Import-Lakeview',                   granularity: 'daily',  doctorColIdx: 14 },
+  { name: 'Forest Dental',          tab: 'Import-Forest Dental',              granularity: 'daily',  doctorColIdx: 14 },
+  { name: 'Kreit',                  tab: 'Import-Kreit',                      granularity: 'daily',  doctorColIdx: 14 },
   { name: 'Atlanta Endo',           tab: 'Import-Atlanta Endo',               granularity: 'monthly' },
   { name: 'Favia',                  tab: 'Import-Favia',                      granularity: 'daily'   },
   { name: 'Blankenship',            tab: 'Import-Blankenship',                granularity: 'daily'   },
-  { name: 'Buford',                 tab: 'Import-Buford',                     granularity: 'daily'   },
+  { name: 'Buford',                 tab: 'Import-Buford',                     granularity: 'daily',  doctorColIdx: 14 },
   { name: 'B Hills',                tab: 'Import-B Hills',                    granularity: 'daily'   },
   { name: 'Town',                   tab: 'Import-Town',                       granularity: 'daily'   },
   { name: 'Kedron',                 tab: 'Import-Kedron',                     granularity: 'daily'   },
@@ -1070,6 +1070,13 @@ const COL_MAP = {
   procedures:     ['Procedures', 'Transactions', 'Procedure Count'],
   encounters:     ['Encounters', 'Patient Encounters', 'Patients'],
   adjPct:         ['Adj. Collection %', 'Adj Collection %', 'Collection %', 'Adj. Collections %'],
+  // "Production by Doctor" / provider column. Matched by header first; for the
+  // tabs flagged with doctorColIdx (column O) we also read by position as a
+  // fallback. Used by the Production / Provider-Day tile to derive a per-day
+  // provider count instead of assuming one provider per working day.
+  providerProd:   ['Production by Doctor', 'Production By Doctor', 'Prod by Doctor',
+                   'Production by Provider', 'Provider Production', 'Doctor Production',
+                   'Providers', 'Doctors', 'Provider', 'Doctor'],
 };
 
 const MO_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -1160,6 +1167,15 @@ function normalizeRow(raw, deal) {
     if (!monthNum && month) monthNum = MO_FULL.indexOf(month) + 1 || null;
     week = parseInt(raw[nm['week']] || '', 10) || null;
 
+    // "Production by Doctor" cell: try header alias first, then fall back to the
+    // configured positional column (column O = index 14) on tabs that carry it.
+    let doctorRaw = getCol(raw, COL_MAP.providerProd, nm);
+    if ((doctorRaw == null || doctorRaw === '') && deal.doctorColIdx != null) {
+      const keys = Object.keys(raw);
+      const k = keys[deal.doctorColIdx];
+      doctorRaw = k != null ? raw[k] : null;
+    }
+
     return {
       deal:          deal.name,
       location:      (raw[nm['location']] || '').trim(),
@@ -1168,6 +1184,7 @@ function normalizeRow(raw, deal) {
       adjCollections: parseNum(getCol(raw, COL_MAP.adjCollections, nm)),
       procedures:     parseNum(getCol(raw, COL_MAP.procedures,     nm)),
       encounters:     parseNum(getCol(raw, COL_MAP.encounters,     nm)),
+      doctorRaw,
       granularity:    deal.granularity,
     };
   } catch { return null; }
@@ -1557,14 +1574,27 @@ function groupByDealLoc(rows) {  const g = {};
   return g;
 }
 
+/* The current, still-running calendar month — never part of any TTM window so
+   the trailing 12 months are always the 12 most recent COMPLETE months prior to
+   the current month. (Wall-clock based, so a complete prior month is retained
+   even on the first days of the next month.) */
+const CURRENT_MONTH_KEY = `${CURRENT_Y}-${String(CURRENT_M).padStart(2,'0')}`;
+
 /* Portfolio TTM = Σ over locations of each location's trailing-12 complete
-   months, each anchored to that location's own latest complete month. */
+   months. Anchoring is dynamic: the current in-progress month is dropped, then
+   each location takes its OWN most recent 12 complete months (a stale location
+   ends at its own last complete month; a fresh one ends at the month before the
+   current month). Returns the window span (minStartKey…maxEndKey) so individual
+   deal/location views can label the exact period; the combined view suppresses
+   it because locations span different windows. */
 function calcTTMByLocation(rows) {
   const groups = groupByDealLoc(rows);
-  let total = 0, anyData = false, allFull = true, maxEndKey = null;
+  let total = 0, anyData = false, allFull = true, maxEndKey = null, minStartKey = null;
   const perDeal = {};
   for (const dl in groups) {
-    const monthly = trimTrailingPartial(aggregateMonthly(groups[dl]));
+    let monthly = trimTrailingPartial(aggregateMonthly(groups[dl]));
+    // Always exclude the current (in-progress) calendar month and anything after it.
+    monthly = monthly.filter(m => m.key < CURRENT_MONTH_KEY);
     if (!monthly.length) continue;
     const sorted   = [...monthly].sort((a,b) => a.key.localeCompare(b.key));
     const endIdx   = sorted.length - 1;
@@ -1572,21 +1602,39 @@ function calcTTMByLocation(rows) {
     const win      = sorted.slice(startIdx, endIdx + 1);
     const amt      = win.reduce((s,m) => s + m.adjCollections, 0);
     const endKey   = sorted[endIdx].key;
+    const startKey = win[0].key;
     total += amt; anyData = true;
     if (win.length < 12) allFull = false;
-    if (maxEndKey === null || endKey > maxEndKey) maxEndKey = endKey;
+    if (maxEndKey === null || endKey > maxEndKey)       maxEndKey   = endKey;
+    if (minStartKey === null || startKey < minStartKey) minStartKey = startKey;
     const deal = dl.split('@@')[0];
     perDeal[deal] = (perDeal[deal] || 0) + amt;
   }
   if (!anyData) return null;
-  return { amount: total, allFull, maxEndKey, perDeal };
+  return { amount: total, allFull, maxEndKey, minStartKey, perDeal };
 }
 
-/* Portfolio Run-Rate = Σ over locations of (avg of that location's last 13
-   COMPLETE weeks × 52). Each location's trailing weeks are trimmed of any
-   short/in-progress final week via trimCompleteWeeks, so a stale location
-   keeps its real final week and a fresh location drops its in-progress one. */
-function calcRunRateByLocation(rows, nWeeks = 13) {
+/* TTM period sub-label. Specific date range is shown ONLY when a single deal is
+   in scope (its locations, or one selected location) — at that level the window
+   is meaningful. At the combined all-deals level the range is suppressed because
+   locations roll up over different 12-month windows, which would mislead. */
+function ttmPeriodText(ttmRes) {
+  if (!ttmRes) return 'Insufficient data';
+  const dealsInScope = [...new Set(filteredData.map(r => r.deal))];
+  if (dealsInScope.length === 1 && ttmRes.minStartKey && ttmRes.maxEndKey) {
+    return `TTM · ${ttmKeyLabel(ttmRes.minStartKey)} – ${ttmKeyLabel(ttmRes.maxEndKey)}`
+         + (ttmRes.allFull ? '' : ' (some <12mo)');
+  }
+  return `Trailing 12 complete months · per-location roll-up`;
+}
+
+/* Portfolio Run-Rate = Σ over locations of (avg of that location's last 26
+   COMPLETE weeks × 52). 26 weeks (~trailing half-year) is used instead of 13 so
+   the annualization washes out short-run seasonality. Each location's trailing
+   weeks are trimmed of any short/in-progress final week via trimCompleteWeeks,
+   so the window is always complete weeks prior to the current in-progress week:
+   a stale location keeps its real final week, a fresh one drops its partial one. */
+function calcRunRateByLocation(rows, nWeeks = 26) {
   const groups = groupByDealLoc(rows);
   let total = 0, anyData = false;
   const perDeal = {};
@@ -2043,14 +2091,14 @@ function renderKPIs(monthly) {
   const ppd = prodPerProviderDay(d);
 
   set('kpiTTM',        ttmRes ? fmtM(ttmRes.amount, true) : '—');
-  set('kpiTTMPeriod',  ttmRes
-        ? `Per-location TTM · through ${ttmKeyLabel(ttmRes.maxEndKey)}${ttmRes.allFull ? '' : ' (some <12mo)'}`
-        : 'Insufficient data');
+  set('kpiTTMPeriod',  ttmPeriodText(ttmRes));
   set('kpiCharge',     fmtM(tC, true));
   set('kpiCollections',fmtM(tAdj, true));
   set('kpiAdjCollRate', adjRate != null ? (adjRate*100).toFixed(1) + '%' : '—');
   set('kpiProvDay',    ppd.value != null ? fmtM(ppd.value, true) : '—');
-  set('kpiProvDaySub', ppd.value != null ? 'Per provider-day' : 'No qualifying days');
+  set('kpiProvDaySub', ppd.value == null ? 'No qualifying days'
+        : ppd.sawProviders ? 'Per provider-day · doctor-based'
+        : 'Per provider-day · day-based (no doctor data)');
   set('kpiLocations',  locs.length);
   set('kpiLocationsSub', locs.length ? locs.slice(0,4).join(', ') + (locs.length>4 ? ` +${locs.length-4} more` : '') : 'None');
   set('kpiLatestDate', latest ? latest.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—');
@@ -2149,56 +2197,122 @@ function applyTileRAG() {
   setChip('ragProvDay',ragBand(monthlyProvDaySeries(rows)));
 }
 
-/* ── Production / Provider-Day (qualifying-day method) ─────────────
-   A "provider-day" here is a distinct working day; the dataset carries no
-   provider headcount, so day count is the best available denominator.
-   Only days whose gross charges exceed HALF the median daily gross charge
-   are counted — this strips near-empty days so the figure reflects real
-   operating days. Daily-granularity rows only (monthly tabs have no day
-   detail). Returns charges-on-qualifying-days ÷ qualifying-day count. */
-function dailyChargeTotals(rows) {
+/* ── Production / Provider-Day (doctor-aware, qualifying-day method) ───────
+   "Provider-days" now come from the "Production by Doctor" column (column O on
+   the tabs that carry it) instead of assuming one provider per working day.
+   For each day we count the providers active that day, then the metric is:
+       Σ gross production on qualifying days  ÷  Σ provider-days on qualifying days
+   A day qualifies if its gross charges exceed HALF the median daily gross — this
+   strips near-empty days. Daily-granularity rows only. If no provider data is
+   found, every day counts as 1 provider, so the figure cleanly falls back to the
+   prior production-per-working-day method. */
+
+/* Parse a "Production by Doctor" cell into a provider signal.
+     • Text with names ("Dr. A, Dr. B" / "Dr A: $2,000; Dr B: $1,500") → name set
+     • Bare small integer 1–40                                          → head-count
+     • Dollar amounts / large numbers / blanks                          → null (ignored) */
+function parseProviders(rawVal) {
+  if (rawVal == null) return { names: null, count: null };
+  const s = String(rawVal).trim();
+  if (!s) return { names: null, count: null };
+  if (!/[A-Za-z]/.test(s)) {                                   // numeric-only cell
+    if (/[$.]/.test(s)) return { names: null, count: null };   // dollar/decimal → not a head-count
+    const n = parseInt(s.replace(/[, ]/g, ''), 10);
+    return (Number.isInteger(n) && n >= 1 && n <= 40) ? { names: null, count: n }
+                                                      : { names: null, count: null };
+  }
+  const names = new Set();
+  s.split(/[;,/|]|(?:\s+(?:and|&)\s+)/i).forEach(seg => {
+    const name = seg
+      .replace(/[:=-]\s*\$?[\d,.]+.*$/, '')   // "Dr Smith: $2,000" → "Dr Smith"
+      .replace(/\$?\b[\d,.]+\b/g, '')         // strip stray amounts
+      .replace(/\s+/g, ' ').trim();
+    if (name && /[A-Za-z]/.test(name)) names.add(name.toLowerCase());
+  });
+  return names.size ? { names, count: names.size } : { names: null, count: null };
+}
+
+/* Per-day gross charge + provider tallies (daily rows only). Each day record
+   carries its month key (mk) so the RAG series can reuse it without re-deriving. */
+function dailyProviderStats(rows) {
   const byDay = {};
+  let sawProviders = false;
   rows.forEach(r => {
     if (r.granularity !== 'daily' || !r.date) return;
     const k = r.date.toDateString();
-    byDay[k] = (byDay[k] || 0) + r.chargeAmount;
+    const d = byDay[k] || (byDay[k] = {
+      charge: 0, names: new Set(), maxCount: 0,
+      mk: `${r.year}-${String(r.monthNum).padStart(2,'0')}`,
+    });
+    d.charge += r.chargeAmount;
+    const pv = parseProviders(r.doctorRaw);
+    if (pv.names)      { pv.names.forEach(n => d.names.add(n)); sawProviders = true; }
+    else if (pv.count) { d.maxCount = Math.max(d.maxCount, pv.count); sawProviders = true; }
   });
-  return byDay;
+  return { byDay, sawProviders };
 }
+
+/* Provider-days for a single day: distinct doctor names (preferred), else the
+   reported head-count, else 1 (day-based fallback). */
+function providerDaysForDay(d) {
+  return d.names.size > 0 ? d.names.size : (d.maxCount > 0 ? d.maxCount : 1);
+}
+
 function prodPerProviderDay(rows) {
-  const byDay = dailyChargeTotals(rows);
-  const totals = Object.values(byDay).filter(v => v > 0);
-  if (totals.length < 2) return { value:null, qualDays:0, totalDays:totals.length, threshold:0, median:0 };
-  const med = median(totals);
-  const cut = med * 0.5;
-  const qual = totals.filter(v => v > cut);
-  const sum  = qual.reduce((s,v) => s+v, 0);
+  const { byDay, sawProviders } = dailyProviderStats(rows);
+  const days = Object.values(byDay).filter(d => d.charge > 0);
+  if (days.length < 2) return { value:null, qualDays:0, totalDays:days.length, providerDays:0, sawProviders };
+  const cut  = median(days.map(d => d.charge)) * 0.5;
+  const qual = days.filter(d => d.charge > cut);
+  const sumCharge = qual.reduce((s,d) => s + d.charge, 0);
+  const provDays  = qual.reduce((s,d) => s + providerDaysForDay(d), 0);
   return {
-    value: qual.length ? sum / qual.length : null,
-    qualDays: qual.length, totalDays: totals.length,
-    threshold: cut, median: med,
+    value: provDays > 0 ? sumCharge / provDays : null,
+    qualDays: qual.length, totalDays: days.length,
+    providerDays: provDays, sawProviders, threshold: cut,
   };
 }
-/* Per-month prod/provider-day series for RAG. Threshold is set ONCE at the
-   deal/scope level (median of all daily totals) so the cut is stable, then
-   applied within each month. */
+
+/* Per-month prod/provider-day series for RAG. Threshold (qualifying-day cut) is
+   set ONCE at the scope level for stability, then each month = Σ qualifying
+   charge ÷ Σ qualifying provider-days within that month. */
 function monthlyProvDaySeries(rows) {
-  const allDaily = Object.values(dailyChargeTotals(rows)).filter(v => v > 0);
-  if (allDaily.length < 4) return [];
-  const cut = median(allDaily) * 0.5;
+  const { byDay } = dailyProviderStats(rows);
+  const days = Object.values(byDay).filter(d => d.charge > 0);
+  if (days.length < 4) return [];
+  const cut = median(days.map(d => d.charge)) * 0.5;
   const byMonth = {};
-  rows.forEach(r => {
-    if (r.granularity !== 'daily' || !r.date) return;
-    const mk = `${r.year}-${String(r.monthNum).padStart(2,'0')}`;
-    const dk = r.date.toDateString();
-    byMonth[mk] = byMonth[mk] || {};
-    byMonth[mk][dk] = (byMonth[mk][dk] || 0) + r.chargeAmount;
+  days.forEach(d => {
+    if (d.charge <= cut) return;
+    const m = byMonth[d.mk] || (byMonth[d.mk] = { charge: 0, prov: 0 });
+    m.charge += d.charge;
+    m.prov   += providerDaysForDay(d);
   });
-  return Object.keys(byMonth).sort().map(mk => {
-    const days = Object.values(byMonth[mk]).filter(v => v > cut);
-    if (!days.length) return null;
-    return days.reduce((s,v)=>s+v,0) / days.length;
-  }).filter(v => v != null);
+  return Object.keys(byMonth).sort()
+    .map(mk => byMonth[mk].prov > 0 ? byMonth[mk].charge / byMonth[mk].prov : null)
+    .filter(v => v != null);
+}
+
+/* One-time console diagnostic: did the "Production by Doctor" column parse into
+   usable provider signals? Run after load so the basis (doctor vs day) is easy
+   to verify against the live sheet. Console only — no UI impact. */
+function logProviderDetection() {
+  try {
+    const tabs = DEALS.filter(d => d.doctorColIdx != null).map(d => d.name);
+    const rows = allData.filter(r => tabs.includes(r.deal));
+    const withSignal = rows.filter(r => { const p = parseProviders(r.doctorRaw); return p.names || p.count; });
+    const names = new Set();
+    let sampleRaw = null;
+    rows.forEach(r => {
+      if (sampleRaw == null && r.doctorRaw != null && String(r.doctorRaw).trim() !== '') sampleRaw = r.doctorRaw;
+      const p = parseProviders(r.doctorRaw);
+      if (p.names) p.names.forEach(n => names.add(n));
+    });
+    console.log('[Dashboard] Production-by-Doctor parse:',
+      `${withSignal.length}/${rows.length} rows yielded a provider signal across ${tabs.join(', ')}.`,
+      names.size ? `Distinct provider names detected: ${names.size}.` : 'No names parsed (head-count or non-provider column).',
+      sampleRaw != null ? `Sample cell: "${sampleRaw}".` : 'Column O was empty on sampled rows.');
+  } catch (e) { /* diagnostic only */ }
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -2234,11 +2348,12 @@ function renderRunRate() {
     return r.granularity === 'daily' && r.week;
   });
 
-  // Per-location roll-up: each location annualizes its OWN last 13 complete
+  // Per-location roll-up: each location annualizes its OWN last 26 complete
   // weeks, then we sum across locations (→ deal → portfolio). This prevents a
   // stale location (data ends weeks ago) from dragging the combined window to 0.
-  const rr = calcRunRateByLocation(rows, 13);
+  const rr = calcRunRateByLocation(rows, 26);
   const annualized = rr ? rr.annualized : null;
+  set('rrCurrentSub', 'Annualize 26 complete weeks prior to current week');
 
   // Portfolio TTM (per-location trailing-12 complete months) — identical scope
   // to the "Portfolio TTM vs LOI" block (filteredData), surfaced here as the
@@ -2312,10 +2427,7 @@ function renderTTMvsLOI(monthly) {
   const ttmRes = calcTTMByLocation(filteredData);
   const ttm = ttmRes ? { amount: ttmRes.amount } : null;
   set('cmpTTM',      ttm ? fmtM(ttm.amount, true) : '—');
-  set('cmpTTMPeriod',
-      ttmRes
-        ? `Per-location TTM · through ${ttmKeyLabel(ttmRes.maxEndKey)}${ttmRes.allFull ? '' : ' (some <12mo)'}`
-        : 'Insufficient data');
+  set('cmpTTMPeriod', ttmPeriodText(ttmRes));
 
   const f = getFilters();
   const inScope = f.deal ? [f.deal] : [...new Set(filteredData.map(r=>r.deal))];
@@ -2924,6 +3036,8 @@ async function init() {
     }
 
     document.getElementById('loadingOverlay').style.display = 'none';
+
+    logProviderDetection();   // one-time console summary of the doctor-column parse
 
     const now = new Date();
     document.getElementById('lastUpdated').textContent =
