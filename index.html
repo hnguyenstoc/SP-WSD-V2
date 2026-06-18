@@ -410,8 +410,8 @@ input[type="date"]:focus { outline: none; border-color: var(--navy); }
   gap: 14px; margin-bottom: 22px;
 }
 .cmp-grid-4 { grid-template-columns: repeat(4,1fr); }
-.rr-var { display: inline-flex; align-items: center; gap: 6px; line-height: 1; }
-.rr-var .rr-arrow { font-size: 22px; line-height: 1; }
+.rr-var { display: inline-flex; align-items: center; gap: 7px; line-height: 1; }
+.rr-arrow-ico { width: 22px; height: 22px; flex-shrink: 0; }
 .cmp-card {
   background: var(--surface2); border-radius: var(--radius-sm);
   border: 1.5px solid var(--border);
@@ -757,36 +757,30 @@ table.dt td.neg   { color: var(--red);   font-weight: 600; }
     <div class="ttm-block" style="margin-bottom:24px">
       <div class="cmp-grid cmp-grid-4">
         <div class="cmp-card">
-          <div class="cmp-label">LOI Baseline (Underwritten)</div>
+          <div class="cmp-label">LOI Baseline</div>
           <div class="cmp-value" id="rrLOI" style="color:var(--navy)">—</div>
-          <div class="cmp-sub">Underwritten annual revenue</div>
+          <div class="cmp-sub">Annual LOI revenue</div>
         </div>
         <div class="cmp-card">
           <div class="cmp-label">Current Annualized Run-Rate</div>
           <div class="cmp-value" id="rrCurrent" style="color:var(--green)">—</div>
-          <div class="cmp-sub" id="rrCurrentSub">Projected full year</div>
+          <div class="cmp-sub" id="rrCurrentSub">Annualize last 8 complete weeks</div>
         </div>
         <div class="cmp-card">
           <div class="cmp-label">Run-Rate vs LOI</div>
           <div class="cmp-value" id="rrVar">—</div>
-          <div class="cmp-sub">vs underwritten baseline</div>
+          <div class="cmp-sub">&nbsp;</div>
         </div>
         <div class="cmp-card">
-          <div class="cmp-label">Underwrite Status</div>
+          <div class="cmp-label">Annualized Run-Rate Status</div>
           <div class="cmp-value"><span id="rrStatus" class="rev-badge" style="font-size:14px;padding:5px 14px">—</span></div>
-          <div class="cmp-sub">Holding what we underwrote?</div>
+          <div class="cmp-sub">&nbsp;</div>
         </div>
       </div>
       <div class="rr-bridge" id="rrBridge"></div>
     </div>
 
     <div class="sec-head"><span class="sec-title">Key Performance Indicators</span><span class="sec-rule"></span></div>
-    <div class="rag-legend">
-      Each metric is colour-coded against that deal's own normal month:
-      <span class="rag-chip green">● Green</span> on track
-      <span class="rag-chip amber">● Amber</span> slightly soft
-      <span class="rag-chip red">● Red</span> needs a look
-    </div>
     <div class="kpi-grid" style="margin-bottom:24px">
       <div class="kpi-card" data-op>
         <div class="kpi-label">TTM Revenue</div>
@@ -1945,17 +1939,18 @@ function renderKPIs(monthly) {
 /* ════════════════════════════════════════════════════════════
    RAG BANDS  ·  dynamic, calibrated to each deal's own history
    ────────────────────────────────────────────────────────────
-   Method: build the in-scope monthly series (deal + location filters
-   applied, date-range ignored so the baseline uses full deal history),
-   then compare the LATEST FULL MONTH of each metric to the MEDIAN of all
-   prior months. Bands:
+   Baseline = the deal's own "normal month" (median of its prior complete
+   months), so the bands self-calibrate to each deal regardless of size.
+   The latest complete month is then graded by how far it sits from normal:
      • level metrics (revenue, charges, encounters, procedures, prod/day)
-         green: latest ≥ 97% of median   (at/above its own norm)
-         amber: 90%–97% of median        (3–10% soft)
-         red:   < 90% of median          (>10% below — investigate)
-     • rate metrics (adj. collection rate) banded in percentage POINTS
-         green: ≥ median − 1pp | amber: median−3pp..−1pp | red: < median−3pp
-   Needs ≥3 prior full months to fire; otherwise shows "n/a".
+         green: within 5% of normal (or above)
+         amber: 5%–15% below normal
+         red:   more than 15% below normal
+     • rate metric (adj. collection rate), measured in percentage points
+         green: within 2pp of normal (or above)
+         amber: 2pp–5pp below normal
+         red:   more than 5pp below normal
+   Needs ≥3 prior complete months to fire; otherwise shows "n/a".
    ════════════════════════════════════════════════════════════ */
 function median(arr) {
   const v = arr.filter(x => x != null && !isNaN(x)).sort((a,b) => a-b);
@@ -1971,13 +1966,13 @@ function ragBand(series, { pp = false } = {}) {
   const base   = median(vals.slice(0, -1));
   if (base == null || base === 0) return null;
   if (pp) {
-    const delta = (latest - base) * 100;            // percentage points
-    const cls = delta >= -1 ? 'green' : delta >= -3 ? 'amber' : 'red';
-    return { cls, base, latest, txt: `${delta>=0?'+':''}${delta.toFixed(1)}pp vs med` };
+    const delta = (latest - base) * 100;            // percentage points vs normal
+    const cls = delta >= -2 - 1e-6 ? 'green' : delta >= -5 - 1e-6 ? 'amber' : 'red';
+    return { cls, base, latest, txt: `${delta>=0?'+':''}${delta.toFixed(1)}pp vs normal` };
   }
-  const ratio = latest / base;
-  const cls = ratio >= 0.97 ? 'green' : ratio >= 0.90 ? 'amber' : 'red';
-  return { cls, base, latest, txt: `${Math.round(ratio*100)}% of med` };
+  const pctDelta = (latest / base - 1) * 100;       // % above/below normal
+  const cls = pctDelta >= -5 - 1e-6 ? 'green' : pctDelta >= -15 - 1e-6 ? 'amber' : 'red';
+  return { cls, base, latest, txt: `${pctDelta>=0?'+':''}${Math.round(pctDelta)}% vs normal` };
 }
 
 /* In-scope rows for RAG calibration: respect active + deal + location
@@ -2073,15 +2068,24 @@ function monthlyProvDaySeries(rows) {
 /* ════════════════════════════════════════════════════════════
    FORWARD RUN-RATE vs LOI
    ════════════════════════════════════════════════════════════ */
-/* Run-rate variance bands (Current Annualized Run-Rate vs LOI):
-     > 0%          → green  (above the underwrite)
-     −1% to 0%     → amber  (essentially holding the underwrite)
-     < −1%         → red    (below the underwrite) */
+/* Annualized run-rate status bands (Current Annualized Run-Rate vs LOI):
+     > 0%          → Outperforming  (green)
+     −1% to 0%     → Aligned        (amber)
+     < −1%         → Underperforming (red) */
 function runRateBand(varP) {
   if (varP == null) return null;
-  if (varP > 0)        return { cls: 'out',   color: 'var(--green)', up: true,  status: 'Above underwrite' };
-  if (varP >= -0.01)   return { cls: 'watch', color: 'var(--amber)', up: false, status: 'Holding underwrite' };
-  return                      { cls: 'under', color: 'var(--red)',   up: false, status: 'Below underwrite' };
+  if (varP > 0)      return { cls: 'out',   color: 'var(--green)', up: true,  status: 'Outperforming'   };
+  if (varP >= -0.01) return { cls: 'watch', color: 'var(--amber)', up: false, status: 'Aligned'         };
+  return                    { cls: 'under', color: 'var(--red)',   up: false, status: 'Underperforming' };
+}
+
+/* Stock-market style trend arrow (zig-zag line + arrowhead), colored via `color`. */
+function trendArrowSvg(up, color) {
+  const line = up ? '22 7 13.5 15.5 8.5 10.5 2 17' : '22 17 13.5 8.5 8.5 13.5 2 7';
+  const head = up ? '16 7 22 7 22 13'               : '16 17 22 17 22 11';
+  return `<svg class="rr-arrow-ico" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2.4" `
+       + `stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">`
+       + `<polyline points="${line}"/><polyline points="${head}"/></svg>`;
 }
 
 function renderRunRate() {
@@ -2094,8 +2098,11 @@ function renderRunRate() {
     return r.granularity === 'daily' && r.week;
   });
 
-  // Complete weeks only, most recent last.
-  const weeks = trimCompleteWeeks(aggregateWeekly(rows));
+  // All weeks present, oldest → newest.
+  const allWeeks = aggregateWeekly(rows).sort((a,b) => a.key.localeCompare(b.key));
+  // Exclude the most recent week (it may be partial / in progress), then use the
+  // 8 weeks immediately BEFORE it so the annualization window is always complete.
+  const eligible = allWeeks.slice(0, -1);
 
   const inScope = f.deal ? [f.deal] : [...new Set(filteredData.map(r=>r.deal))];
   const loiTotal = inScope.filter(dn => loiConfig[dn] > 0)
@@ -2111,34 +2118,32 @@ function renderRunRate() {
     else { statusEl.style.background = ''; statusEl.style.color = ''; }
   };
 
-  if (weeks.length < 4) {
+  if (eligible.length < 4) {
     set('rrLOI', loiTotal ? fmtM(loiTotal, true) : '—');
-    set('rrCurrent', '—'); set('rrCurrentSub', 'Projected full year');
+    set('rrCurrent', '—');
     set('rrVar', '—'); setS('rrVar', 'color', '');
     setStatus('—', null);
     if (bridge) bridge.innerHTML = '';
     return;
   }
 
-  // Current annualized run-rate = average of the most recent 8 full weeks × 52.
-  // This is the projected full-year figure compared against the LOI baseline.
-  const N = Math.min(8, weeks.length);
-  const win = weeks.slice(-N);
+  // Current annualized run-rate = average of the 8 complete weeks before the most
+  // recent week × 52.
+  const N = Math.min(8, eligible.length);
+  const win = eligible.slice(-N);
   const avgWeek = win.reduce((s,w) => s + w.adjCollections, 0) / N;
   const annualized = avgWeek * 52;
 
   set('rrLOI', loiTotal ? fmtM(loiTotal, true) : '—');
   set('rrCurrent', fmtM(annualized, true));
-  set('rrCurrentSub', `Projected full year · last ${N} full weeks`);
 
   if (loiTotal) {
     const varP = (annualized - loiTotal) / loiTotal;
     const band = runRateBand(varP);
     const pct  = Math.round(Math.abs(varP) * 100);
-    const arrow = band.up ? '↗' : '↘';
     setH('rrVar',
       `<span class="rr-var" style="color:${band.color}">` +
-      `<span class="rr-arrow">${arrow}</span><span>${pct}%</span></span>`);
+      `${trendArrowSvg(band.up, band.color)}<span>${pct}%</span></span>`);
     setStatus(band.status, band.cls);
   } else {
     set('rrVar', '—'); setS('rrVar', 'color', '');
