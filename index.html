@@ -425,7 +425,8 @@ input[type="date"]:focus { outline: none; border-color: var(--navy); }
 .rr-bar-track { background: var(--surface3); border-radius: 4px; height: 22px; position: relative; overflow: hidden; }
 .rr-bar-fill { height: 100%; border-radius: 4px; transition: width 0.4s; }
 .rr-bar-fill.loi  { background: var(--navy); }
-.rr-bar-fill.curr { background: var(--green); }
+.rr-bar-fill.ttm  { background: var(--green); }
+.rr-bar-fill.curr { background: var(--blue); }
 .rr-bar-fill.proj { background: var(--blue); }
 .rr-bar-val { font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
 
@@ -810,7 +811,7 @@ table.dt td.neg   { color: var(--red);   font-weight: 600; }
         <div class="cmp-card">
           <div class="cmp-label">Current Annualized Run-Rate</div>
           <div class="cmp-value" id="rrCurrent" style="color:var(--green)">—</div>
-          <div class="cmp-sub" id="rrCurrentSub">Annualize last 8 complete weeks</div>
+          <div class="cmp-sub" id="rrCurrentSub">Annualize last 13 complete weeks</div>
         </div>
         <div class="cmp-card">
           <div class="cmp-label">Run-Rate vs LOI</div>
@@ -834,9 +835,9 @@ table.dt td.neg   { color: var(--red);   font-weight: 600; }
         <div class="kpi-sub" id="kpiTTMPeriod">Trailing 12 months<span class="rag-chip" id="ragTTM"></span></div>
       </div>
       <div class="kpi-card blue" data-op>
-        <div class="kpi-label">Total Charge Amount</div>
+        <div class="kpi-label">Total Production</div>
         <div class="kpi-value" id="kpiCharge">—</div>
-        <div class="kpi-sub">Gross charges · selected period<span class="rag-chip" id="ragCharge"></span></div>
+        <div class="kpi-sub">Gross production · selected period<span class="rag-chip" id="ragCharge"></span></div>
       </div>
       <div class="kpi-card green" data-op>
         <div class="kpi-label">Total Revenue</div>
@@ -852,16 +853,6 @@ table.dt td.neg   { color: var(--red);   font-weight: 600; }
         <div class="kpi-label">Production / Provider-Day</div>
         <div class="kpi-value" id="kpiProvDay">—</div>
         <div class="kpi-sub" id="kpiProvDaySub">Per provider-day<span class="rag-chip" id="ragProvDay"></span></div>
-      </div>
-      <div class="kpi-card" data-op>
-        <div class="kpi-label">Patient Encounters</div>
-        <div class="kpi-value" id="kpiEncounters">—</div>
-        <div class="kpi-sub">Total encounters<span class="rag-chip" id="ragEnc"></span></div>
-      </div>
-      <div class="kpi-card" data-op>
-        <div class="kpi-label">Procedures / Txns</div>
-        <div class="kpi-value" id="kpiProcedures">—</div>
-        <div class="kpi-sub">Total procedures<span class="rag-chip" id="ragProc"></span></div>
       </div>
       <div class="kpi-card gray">
         <div class="kpi-label">Active Locations</div>
@@ -893,7 +884,7 @@ table.dt td.neg   { color: var(--red);   font-weight: 600; }
     <div class="chart-row" style="margin-bottom:16px">
       <div class="chart-card full">
         <div class="chart-title" id="mainChartTitle">Monthly Revenue</div>
-        <div class="chart-sub" id="mainChartSub">Bars = Revenue · Line = Charge Amount</div>
+        <div class="chart-sub" id="mainChartSub">Bars = Production · Line = Revenue</div>
         <div class="chart-wrap"><canvas id="mainChart" height="260"></canvas></div>
       </div>
     </div>
@@ -1356,7 +1347,7 @@ function setView(v) {
   const lbl = v === 'monthly' ? 'Monthly' : 'Weekly';
   document.getElementById('trendLabel').textContent     = lbl + ' Trend';
   document.getElementById('mainChartTitle').textContent = lbl + ' Revenue';
-  document.getElementById('mainChartSub').textContent   = `Bars = Revenue · Line = Charge Amount — aggregated by ${v.toLowerCase()} period`;
+  document.getElementById('mainChartSub').textContent   = `Bars = Production · Line = Revenue — aggregated by ${v.toLowerCase()} period`;
   document.getElementById('perfTableSectionLabel').textContent = lbl + ' Performance Detail';
   document.getElementById('perfTableTitle').textContent = lbl + ' Summary';
   const locSub = document.getElementById('locTableSub');
@@ -1532,6 +1523,85 @@ function calcRollingTTM(monthly) {
     out.push({ label: sorted[i].label, key: sorted[i].key, amount: w.reduce((s,m) => s + m.adjCollections, 0) });
   }
   return out;
+}
+
+/* ════════════════════════════════════════════════════════════
+   PER-LOCATION ROLL-UP  (TTM & Run-Rate)
+   ────────────────────────────────────────────────────────────
+   Combined-level metrics must NOT be anchored to the single most
+   recent date in the whole dataset — locations refresh on different
+   cadences (e.g. Lakeview→06/12, Forest→06/16, Buford→04/02), and a
+   stale location would otherwise contribute zero months/weeks to the
+   trailing window and understate the portfolio.
+
+   Correct approach: compute each location's metric against ITS OWN
+   most recent complete period, then roll up location → deal → portfolio.
+   Summation is associative, so summing per-location values across the
+   in-scope set yields the same total as an explicit deal-by-deal roll-up
+   (and the function also returns a per-deal breakdown for transparency).
+
+   `rows` = the in-scope raw daily/monthly records (already filtered for
+   active deals + deal/location selection). */
+/* Format a YYYY-MM aggregation key as "Mon YYYY" for display labels. */
+function ttmKeyLabel(key) {
+  if (!key) return '—';
+  const [y, m] = key.split('-').map(Number);
+  return `${MO_SHORT[m-1]} ${y}`;
+}
+
+function groupByDealLoc(rows) {  const g = {};
+  rows.forEach(r => {
+    const dl = `${r.deal}@@${r.location || '(unspecified)'}`;
+    (g[dl] ||= []).push(r);
+  });
+  return g;
+}
+
+/* Portfolio TTM = Σ over locations of each location's trailing-12 complete
+   months, each anchored to that location's own latest complete month. */
+function calcTTMByLocation(rows) {
+  const groups = groupByDealLoc(rows);
+  let total = 0, anyData = false, allFull = true, maxEndKey = null;
+  const perDeal = {};
+  for (const dl in groups) {
+    const monthly = trimTrailingPartial(aggregateMonthly(groups[dl]));
+    if (!monthly.length) continue;
+    const sorted   = [...monthly].sort((a,b) => a.key.localeCompare(b.key));
+    const endIdx   = sorted.length - 1;
+    const startIdx = Math.max(0, endIdx - 11);
+    const win      = sorted.slice(startIdx, endIdx + 1);
+    const amt      = win.reduce((s,m) => s + m.adjCollections, 0);
+    const endKey   = sorted[endIdx].key;
+    total += amt; anyData = true;
+    if (win.length < 12) allFull = false;
+    if (maxEndKey === null || endKey > maxEndKey) maxEndKey = endKey;
+    const deal = dl.split('@@')[0];
+    perDeal[deal] = (perDeal[deal] || 0) + amt;
+  }
+  if (!anyData) return null;
+  return { amount: total, allFull, maxEndKey, perDeal };
+}
+
+/* Portfolio Run-Rate = Σ over locations of (avg of that location's last 13
+   COMPLETE weeks × 52). Each location's trailing weeks are trimmed of any
+   short/in-progress final week via trimCompleteWeeks, so a stale location
+   keeps its real final week and a fresh location drops its in-progress one. */
+function calcRunRateByLocation(rows, nWeeks = 13) {
+  const groups = groupByDealLoc(rows);
+  let total = 0, anyData = false;
+  const perDeal = {};
+  for (const dl in groups) {
+    const weeks = trimCompleteWeeks(aggregateWeekly(groups[dl]));
+    if (!weeks.length) continue;
+    const N   = Math.min(nWeeks, weeks.length);
+    const win = weeks.slice(-N);
+    const ann = (win.reduce((s,w) => s + w.adjCollections, 0) / N) * 52;
+    total += ann; anyData = true;
+    const deal = dl.split('@@')[0];
+    perDeal[deal] = (perDeal[deal] || 0) + ann;
+  }
+  if (!anyData) return null;
+  return { annualized: total, perDeal };
 }
 
 function calcYoY(monthly, n = 5) {
@@ -1829,15 +1899,35 @@ function renderMainChart(data) {
 
   // If partial month exists, show it as a faded bar appended
   const allD  = partial ? [...d, partial] : d;
+  // Bars = gross Production (charge amount); faded for the in-progress period.
   const bgColors = allD.map((x, i) =>
-    (partial && i === allD.length - 1) ? 'rgba(27,110,69,0.28)' : 'rgba(27,110,69,0.75)'
+    (partial && i === allD.length - 1) ? 'rgba(27,53,100,0.20)' : 'rgba(27,53,100,0.75)'
   );
   const bdColors = allD.map((x, i) =>
-    (partial && i === allD.length - 1) ? 'rgba(27,110,69,0.45)' : '#1B6E45'
+    (partial && i === allD.length - 1) ? 'rgba(27,53,100,0.35)' : '#1B3564'
   );
-  const lineColors = allD.map((x, i) =>
-    (partial && i === allD.length - 1) ? 'rgba(27,53,100,0.3)' : '#1B3564'
-  );
+
+  // Inline plugin: print the Revenue $ value above each line point. Scoped to
+  // this chart only (no global Chart.js side-effects on other charts).
+  const revLabelPlugin = {
+    id: 'revLabels',
+    afterDatasetsDraw(chart) {
+      const meta = chart.getDatasetMeta(1);          // dataset 1 = Revenue line
+      if (!meta || meta.hidden) return;
+      const ctx = chart.ctx;
+      ctx.save();
+      ctx.font = '600 10px Inter, sans-serif';
+      ctx.fillStyle = '#1B6E45';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      meta.data.forEach((pt, i) => {
+        const v = chart.data.datasets[1].data[i];
+        if (v == null) return;
+        ctx.fillText(fmtM(v, true), pt.x, pt.y - 7);
+      });
+      ctx.restore();
+    }
+  };
 
   charts.main = new Chart(document.getElementById('mainChart'), {
     type: 'bar',
@@ -1845,29 +1935,31 @@ function renderMainChart(data) {
       labels: allD.map(x => x.label + (isCurrentMonthKey(x.key) ? ' *' : '')),
       datasets: [
         {
-          label: 'Revenue',
-          data: allD.map(x => x.adjCollections),
+          label: 'Production',
+          data: allD.map(x => x.chargeAmount),
           backgroundColor: bgColors, borderColor: bdColors, borderWidth: 1, order: 2,
         },
         {
-          type: 'line', label: 'Charge Amount',
-          data: allD.map(x => isCurrentMonthKey(x.key) ? null : x.chargeAmount),
-          borderColor: '#1B3564', borderWidth: 2, backgroundColor: 'transparent',
-          pointRadius: 2.5, tension: 0.25, order: 1, spanGaps: false,
+          type: 'line', label: 'Revenue',
+          data: allD.map(x => x.adjCollections),
+          borderColor: '#1B6E45', borderWidth: 2.5, backgroundColor: 'transparent',
+          pointRadius: 3, pointBackgroundColor: '#1B6E45', tension: 0.25, order: 1, spanGaps: true,
         },
       ],
     },
     options: {
       responsive: true, maintainAspectRatio: false, animation: { duration: 300 },
+      layout: { padding: { top: 22 } },              // headroom for the $ labels
       plugins: {
         legend: { labels: { boxWidth: 12, padding: 12 } },
-        tooltip: { ...TOOLTIP, callbacks: { label: c => ' ' + fmtM(c.raw) } },
+        tooltip: { ...TOOLTIP, callbacks: { label: c => ` ${c.dataset.label}: ${fmtM(c.raw)}` } },
       },
       scales: {
         x: { ...SCALE_X, ticks: { ...SCALE_X.ticks, maxTicksLimit: 12, maxRotation: 30 } },
         y: SCALE_Y_DOLLAR,
       },
     },
+    plugins: [revLabelPlugin],
   });
 }
 
@@ -1936,29 +2028,29 @@ function renderKPIs(monthly) {
   const d = filteredData;
   const tC   = d.reduce((s,r) => s + r.chargeAmount,   0);
   const tAdj = d.reduce((s,r) => s + r.adjCollections, 0);
-  const tPrc = d.reduce((s,r) => s + r.procedures,     0);
-  const tEnc = d.reduce((s,r) => s + r.encounters,     0);
   const locs = [...new Set(d.map(r=>r.location).filter(Boolean))];
-  const ttm  = calcTTM(monthly);
+  // TTM headline = per-location trailing-12 complete months rolled up (each
+  // location anchored to its own latest complete month).
+  const ttmRes = calcTTMByLocation(d);
   const dates = d.filter(r=>r.date).map(r=>r.date.getTime());
   const latest = dates.length ? new Date(Math.max(...dates)) : null;
 
-  // Adjusted collection rate (realization) = collections ÷ gross charges
+  // Adjusted collection rate (realization) = collections ÷ gross production
   const adjRate = tC > 0 ? tAdj / tC : null;
 
-  // Production per provider-day on QUALIFYING days only (day's gross charges
-  // must exceed half the median daily gross charge — threshold is per-scope).
+  // Production per provider-day on QUALIFYING days only (day's gross production
+  // must exceed half the median daily gross production — threshold is per-scope).
   const ppd = prodPerProviderDay(d);
 
-  set('kpiTTM',        ttm ? fmtM(ttm.amount, true) : '—');
-  set('kpiTTMPeriod',  ttm ? ttm.periodLabel + (ttm.isPartial ? ` (${ttm.months}mo)` : '') : 'Insufficient data');
+  set('kpiTTM',        ttmRes ? fmtM(ttmRes.amount, true) : '—');
+  set('kpiTTMPeriod',  ttmRes
+        ? `Per-location TTM · through ${ttmKeyLabel(ttmRes.maxEndKey)}${ttmRes.allFull ? '' : ' (some <12mo)'}`
+        : 'Insufficient data');
   set('kpiCharge',     fmtM(tC, true));
   set('kpiCollections',fmtM(tAdj, true));
   set('kpiAdjCollRate', adjRate != null ? (adjRate*100).toFixed(1) + '%' : '—');
   set('kpiProvDay',    ppd.value != null ? fmtM(ppd.value, true) : '—');
   set('kpiProvDaySub', ppd.value != null ? 'Per provider-day' : 'No qualifying days');
-  set('kpiEncounters', tEnc ? numFmt(tEnc) : '—');
-  set('kpiProcedures', tPrc ? numFmt(tPrc) : '—');
   set('kpiLocations',  locs.length);
   set('kpiLocationsSub', locs.length ? locs.slice(0,4).join(', ') + (locs.length>4 ? ` +${locs.length-4} more` : '') : 'None');
   set('kpiLatestDate', latest ? latest.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—');
@@ -2054,8 +2146,6 @@ function applyTileRAG() {
   setChip('ragColl',   ragBand(mSeries.map(m => m.adjCollections)));
   setChip('ragCharge', ragBand(mSeries.map(m => m.chargeAmount)));
   setChip('ragRate',   ragBand(mSeries.map(m => m.collRate), { pp:true }));
-  setChip('ragEnc',    ragBand(mSeries.map(m => m.encounters)));
-  setChip('ragProc',   ragBand(mSeries.map(m => m.procedures)));
   setChip('ragProvDay',ragBand(monthlyProvDaySeries(rows)));
 }
 
@@ -2144,11 +2234,17 @@ function renderRunRate() {
     return r.granularity === 'daily' && r.week;
   });
 
-  // All weeks present, oldest → newest.
-  const allWeeks = aggregateWeekly(rows).sort((a,b) => a.key.localeCompare(b.key));
-  // Exclude the most recent week (it may be partial / in progress), then use the
-  // 8 weeks immediately BEFORE it so the annualization window is always complete.
-  const eligible = allWeeks.slice(0, -1);
+  // Per-location roll-up: each location annualizes its OWN last 13 complete
+  // weeks, then we sum across locations (→ deal → portfolio). This prevents a
+  // stale location (data ends weeks ago) from dragging the combined window to 0.
+  const rr = calcRunRateByLocation(rows, 13);
+  const annualized = rr ? rr.annualized : null;
+
+  // Portfolio TTM (per-location trailing-12 complete months) — identical scope
+  // to the "Portfolio TTM vs LOI" block (filteredData), surfaced here as the
+  // middle comparison bar so the two figures always agree.
+  const ttmRes = calcTTMByLocation(filteredData);
+  const ttmAmt = ttmRes ? ttmRes.amount : null;
 
   const inScope = f.deal ? [f.deal] : [...new Set(filteredData.map(r=>r.deal))];
   const loiTotal = inScope.filter(dn => loiConfig[dn] > 0)
@@ -2164,7 +2260,7 @@ function renderRunRate() {
     else { statusEl.style.background = ''; statusEl.style.color = ''; }
   };
 
-  if (eligible.length < 4) {
+  if (annualized == null) {
     set('rrLOI', loiTotal ? fmtM(loiTotal, true) : '—');
     set('rrCurrent', '—');
     set('rrVar', '—'); setS('rrVar', 'color', '');
@@ -2172,13 +2268,6 @@ function renderRunRate() {
     if (bridge) bridge.innerHTML = '';
     return;
   }
-
-  // Current annualized run-rate = average of the 8 complete weeks before the most
-  // recent week × 52.
-  const N = Math.min(8, eligible.length);
-  const win = eligible.slice(-N);
-  const avgWeek = win.reduce((s,w) => s + w.adjCollections, 0) / N;
-  const annualized = avgWeek * 52;
 
   set('rrLOI', loiTotal ? fmtM(loiTotal, true) : '—');
   set('rrCurrent', fmtM(annualized, true));
@@ -2196,17 +2285,20 @@ function renderRunRate() {
     setStatus('—', null);
   }
 
-  // Two-bar comparison: LOI baseline vs current run-rate.
+  // Three-bar comparison: LOI Baseline · TTM Revenue · Annualized Run-Rate.
   if (bridge) {
     if (loiTotal) {
-      const maxV = Math.max(loiTotal, annualized) || 1;
+      const maxV = Math.max(loiTotal, ttmAmt || 0, annualized) || 1;
       const bar = (label, cls, val) => `
         <div class="rr-bar-row">
           <div class="rr-bar-label">${label}</div>
-          <div class="rr-bar-track"><div class="rr-bar-fill ${cls}" style="width:${Math.max(2, (val/maxV)*100).toFixed(1)}%"></div></div>
+          <div class="rr-bar-track"><div class="rr-bar-fill ${cls}" style="width:${Math.max(2, ((val||0)/maxV)*100).toFixed(1)}%"></div></div>
           <div class="rr-bar-val">${val ? fmtM(val, true) : '—'}</div>
         </div>`;
-      bridge.innerHTML = bar('LOI Baseline', 'loi', loiTotal) + bar('Current Run-Rate', 'curr', annualized);
+      bridge.innerHTML =
+        bar('LOI Baseline', 'loi', loiTotal) +
+        bar('TTM Revenue', 'ttm', ttmAmt) +
+        bar('Annualized Run-Rate', 'curr', annualized);
     } else {
       bridge.innerHTML = '';
     }
@@ -2215,9 +2307,15 @@ function renderRunRate() {
 
 
 function renderTTMvsLOI(monthly) {
-  const ttm = calcTTM(monthly);
+  // Per-location roll-up: each location's trailing-12 complete months anchored
+  // to its OWN latest complete month, summed across locations → deal → portfolio.
+  const ttmRes = calcTTMByLocation(filteredData);
+  const ttm = ttmRes ? { amount: ttmRes.amount } : null;
   set('cmpTTM',      ttm ? fmtM(ttm.amount, true) : '—');
-  set('cmpTTMPeriod',ttm ? ttm.periodLabel + (ttm.isPartial ? ` (${ttm.months}mo only)` : '') : 'Insufficient data');
+  set('cmpTTMPeriod',
+      ttmRes
+        ? `Per-location TTM · through ${ttmKeyLabel(ttmRes.maxEndKey)}${ttmRes.allFull ? '' : ' (some <12mo)'}`
+        : 'Insufficient data');
 
   const f = getFilters();
   const inScope = f.deal ? [f.deal] : [...new Set(filteredData.map(r=>r.deal))];
@@ -2337,7 +2435,7 @@ function renderPerfTable(periodData) {
   const body = document.getElementById('perfTableBody');
   head.innerHTML = `<tr>
     <th class="l">${isM ? 'Period' : 'Week'}</th>
-    <th>Charge Amount</th><th>Revenue</th>
+    <th>Production</th><th>Revenue</th>
     <th>Procedures</th>
     <th>Encounters</th><th>${isM ? 'Working Days' : 'Days'}</th>
   </tr>`;
