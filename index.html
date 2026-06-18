@@ -811,7 +811,7 @@ table.dt td.neg   { color: var(--red);   font-weight: 600; }
         <div class="cmp-card">
           <div class="cmp-label">Current Annualized Run-Rate</div>
           <div class="cmp-value" id="rrCurrent" style="color:var(--green)">—</div>
-          <div class="cmp-sub" id="rrCurrentSub">Annualize 26 recent complete weeks</div>
+          <div class="cmp-sub" id="rrCurrentSub">Annualize 13 recent complete weeks</div>
         </div>
         <div class="cmp-card">
           <div class="cmp-label">Run-Rate vs LOI</div>
@@ -1637,13 +1637,12 @@ function ttmPeriodText(ttmRes) {
   return `Trailing 12 complete months · per-location roll-up`;
 }
 
-/* Portfolio Run-Rate = Σ over locations of (avg of that location's last 26
-   COMPLETE weeks × 52). 26 weeks (~trailing half-year) is used instead of 13 so
-   the annualization washes out short-run seasonality. Each location's trailing
-   weeks are trimmed of any short/in-progress final week via trimCompleteWeeks,
-   so the window is always complete weeks prior to the current in-progress week:
-   a stale location keeps its real final week, a fresh one drops its partial one. */
-function calcRunRateByLocation(rows, nWeeks = 26) {
+/* Portfolio Run-Rate = Σ over locations of (avg of that location's last 13
+   COMPLETE weeks × 52). Each location's trailing weeks are trimmed of any
+   short/in-progress final week via trimCompleteWeeks, so the window is always
+   complete weeks prior to the current in-progress week: a stale location keeps
+   its real final week, a fresh one drops its partial one. */
+function calcRunRateByLocation(rows, nWeeks = 13) {
   const groups = groupByDealLoc(rows);
   let total = 0, anyData = false;
   const perDeal = {};
@@ -2321,12 +2320,12 @@ function renderRunRate() {
     return r.granularity === 'daily' && r.week;
   });
 
-  // Per-location roll-up: each location annualizes its OWN last 26 complete
+  // Per-location roll-up: each location annualizes its OWN last 13 complete
   // weeks, then we sum across locations (→ deal → portfolio). This prevents a
   // stale location (data ends weeks ago) from dragging the combined window to 0.
-  const rr = calcRunRateByLocation(rows, 26);
+  const rr = calcRunRateByLocation(rows, 13);
   const annualized = rr ? rr.annualized : null;
-  set('rrCurrentSub', 'Annualize 26 recent complete weeks');
+  set('rrCurrentSub', 'Annualize 13 recent complete weeks');
 
   // Portfolio TTM (per-location trailing-12 complete months) — identical scope
   // to the "Portfolio TTM vs LOI" block (filteredData), surfaced here as the
