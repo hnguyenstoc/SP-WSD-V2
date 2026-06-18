@@ -811,7 +811,7 @@ table.dt td.neg   { color: var(--red);   font-weight: 600; }
         <div class="cmp-card">
           <div class="cmp-label">Current Annualized Run-Rate</div>
           <div class="cmp-value" id="rrCurrent" style="color:var(--green)">—</div>
-          <div class="cmp-sub" id="rrCurrentSub">Annualize 26 complete weeks prior to current week</div>
+          <div class="cmp-sub" id="rrCurrentSub">Annualize 26 recent complete weeks</div>
         </div>
         <div class="cmp-card">
           <div class="cmp-label">Run-Rate vs LOI</div>
@@ -1964,14 +1964,20 @@ function renderMainChart(data) {
       if (!meta || meta.hidden) return;
       const ctx = chart.ctx;
       ctx.save();
-      ctx.font = '600 10px Inter, sans-serif';
-      ctx.fillStyle = '#1B6E45';
+      ctx.font = '700 10px Inter, sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'bottom';
+      ctx.lineJoin = 'round';
       meta.data.forEach((pt, i) => {
         const v = chart.data.datasets[1].data[i];
         if (v == null) return;
-        ctx.fillText(fmtM(v, true), pt.x, pt.y - 7);
+        const txt = fmtM(v, true);
+        // White halo so the green value stays legible over the dark navy bars.
+        ctx.lineWidth = 3.5;
+        ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+        ctx.strokeText(txt, pt.x, pt.y - 7);
+        ctx.fillStyle = '#14502F';                    // deeper green for stronger contrast
+        ctx.fillText(txt, pt.x, pt.y - 7);
       });
       ctx.restore();
     }
@@ -2096,9 +2102,9 @@ function renderKPIs(monthly) {
   set('kpiCollections',fmtM(tAdj, true));
   set('kpiAdjCollRate', adjRate != null ? (adjRate*100).toFixed(1) + '%' : '—');
   set('kpiProvDay',    ppd.value != null ? fmtM(ppd.value, true) : '—');
-  set('kpiProvDaySub', ppd.value == null ? 'No qualifying days'
-        : ppd.sawProviders ? 'Per provider-day · doctor-based'
-        : 'Per provider-day · day-based (no doctor data)');
+  set('kpiProvDaySub', ppd.value == null
+        ? 'No production-by-provider data'
+        : `Avg daily production · ${ppd.n.toLocaleString()} provider-days`);
   set('kpiLocations',  locs.length);
   set('kpiLocationsSub', locs.length ? locs.slice(0,4).join(', ') + (locs.length>4 ? ` +${locs.length-4} more` : '') : 'None');
   set('kpiLatestDate', latest ? latest.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—');
@@ -2197,120 +2203,78 @@ function applyTileRAG() {
   setChip('ragProvDay',ragBand(monthlyProvDaySeries(rows)));
 }
 
-/* ── Production / Provider-Day (doctor-aware, qualifying-day method) ───────
-   "Provider-days" now come from the "Production by Doctor" column (column O on
-   the tabs that carry it) instead of assuming one provider per working day.
-   For each day we count the providers active that day, then the metric is:
-       Σ gross production on qualifying days  ÷  Σ provider-days on qualifying days
-   A day qualifies if its gross charges exceed HALF the median daily gross — this
-   strips near-empty days. Daily-granularity rows only. If no provider data is
-   found, every day counts as 1 provider, so the figure cleanly falls back to the
-   prior production-per-working-day method. */
+/* ── Production / Provider-Day (average of daily production by provider) ──────
+   The tile answers "how much does a provider produce on an average day?" It is
+   the simple average of the daily production-by-provider figures held in the
+   "Production by Doctor" column (column O on the tabs that carry it). Each cell
+   is read as a dollar amount; if a cell lists several providers (each with its
+   own amount), every amount is one provider-day observation. Days/cells with no
+   positive value are skipped, so the average reflects days actually worked.
+   Daily-granularity rows only. */
 
-/* Parse a "Production by Doctor" cell into a provider signal.
-     • Text with names ("Dr. A, Dr. B" / "Dr A: $2,000; Dr B: $1,500") → name set
-     • Bare small integer 1–40                                          → head-count
-     • Dollar amounts / large numbers / blanks                          → null (ignored) */
-function parseProviders(rawVal) {
-  if (rawVal == null) return { names: null, count: null };
+/* Extract the production dollar amount(s) from a "Production by Doctor" cell.
+   Returns an array of positive numbers (one per provider amount found). */
+function parseProviderProduction(rawVal) {
+  if (rawVal == null) return [];
   const s = String(rawVal).trim();
-  if (!s) return { names: null, count: null };
-  if (!/[A-Za-z]/.test(s)) {                                   // numeric-only cell
-    if (/[$.]/.test(s)) return { names: null, count: null };   // dollar/decimal → not a head-count
-    const n = parseInt(s.replace(/[, ]/g, ''), 10);
-    return (Number.isInteger(n) && n >= 1 && n <= 40) ? { names: null, count: n }
-                                                      : { names: null, count: null };
-  }
-  const names = new Set();
-  s.split(/[;,/|]|(?:\s+(?:and|&)\s+)/i).forEach(seg => {
-    const name = seg
-      .replace(/[:=-]\s*\$?[\d,.]+.*$/, '')   // "Dr Smith: $2,000" → "Dr Smith"
-      .replace(/\$?\b[\d,.]+\b/g, '')         // strip stray amounts
-      .replace(/\s+/g, ' ').trim();
-    if (name && /[A-Za-z]/.test(name)) names.add(name.toLowerCase());
-  });
-  return names.size ? { names, count: names.size } : { names: null, count: null };
+  if (!s) return [];
+  const tokens = s.match(/-?\$?\s*[\d,]+(?:\.\d+)?/g);
+  if (!tokens) return [];
+  return tokens
+    .map(t => parseFloat(t.replace(/[$,\s]/g, '')))
+    .filter(v => !isNaN(v) && v > 0);
 }
 
-/* Per-day gross charge + provider tallies (daily rows only). Each day record
-   carries its month key (mk) so the RAG series can reuse it without re-deriving. */
-function dailyProviderStats(rows) {
-  const byDay = {};
-  let sawProviders = false;
+/* All daily production-by-provider observations across the in-scope rows. */
+function providerProductionValues(rows) {
+  const vals = [];
   rows.forEach(r => {
-    if (r.granularity !== 'daily' || !r.date) return;
-    const k = r.date.toDateString();
-    const d = byDay[k] || (byDay[k] = {
-      charge: 0, names: new Set(), maxCount: 0,
-      mk: `${r.year}-${String(r.monthNum).padStart(2,'0')}`,
-    });
-    d.charge += r.chargeAmount;
-    const pv = parseProviders(r.doctorRaw);
-    if (pv.names)      { pv.names.forEach(n => d.names.add(n)); sawProviders = true; }
-    else if (pv.count) { d.maxCount = Math.max(d.maxCount, pv.count); sawProviders = true; }
+    if (r.granularity !== 'daily') return;
+    for (const v of parseProviderProduction(r.doctorRaw)) vals.push(v);
   });
-  return { byDay, sawProviders };
-}
-
-/* Provider-days for a single day: distinct doctor names (preferred), else the
-   reported head-count, else 1 (day-based fallback). */
-function providerDaysForDay(d) {
-  return d.names.size > 0 ? d.names.size : (d.maxCount > 0 ? d.maxCount : 1);
+  return vals;
 }
 
 function prodPerProviderDay(rows) {
-  const { byDay, sawProviders } = dailyProviderStats(rows);
-  const days = Object.values(byDay).filter(d => d.charge > 0);
-  if (days.length < 2) return { value:null, qualDays:0, totalDays:days.length, providerDays:0, sawProviders };
-  const cut  = median(days.map(d => d.charge)) * 0.5;
-  const qual = days.filter(d => d.charge > cut);
-  const sumCharge = qual.reduce((s,d) => s + d.charge, 0);
-  const provDays  = qual.reduce((s,d) => s + providerDaysForDay(d), 0);
-  return {
-    value: provDays > 0 ? sumCharge / provDays : null,
-    qualDays: qual.length, totalDays: days.length,
-    providerDays: provDays, sawProviders, threshold: cut,
-  };
+  const vals = providerProductionValues(rows);
+  if (!vals.length) return { value: null, n: 0, sawProviders: false };
+  const sum = vals.reduce((s, v) => s + v, 0);
+  return { value: sum / vals.length, n: vals.length, sawProviders: true };
 }
 
-/* Per-month prod/provider-day series for RAG. Threshold (qualifying-day cut) is
-   set ONCE at the scope level for stability, then each month = Σ qualifying
-   charge ÷ Σ qualifying provider-days within that month. */
+/* Per-month series of the average daily production per provider, for the RAG
+   chip — each month = mean of that month's provider-production observations. */
 function monthlyProvDaySeries(rows) {
-  const { byDay } = dailyProviderStats(rows);
-  const days = Object.values(byDay).filter(d => d.charge > 0);
-  if (days.length < 4) return [];
-  const cut = median(days.map(d => d.charge)) * 0.5;
   const byMonth = {};
-  days.forEach(d => {
-    if (d.charge <= cut) return;
-    const m = byMonth[d.mk] || (byMonth[d.mk] = { charge: 0, prov: 0 });
-    m.charge += d.charge;
-    m.prov   += providerDaysForDay(d);
+  rows.forEach(r => {
+    if (r.granularity !== 'daily' || !r.year || !r.monthNum) return;
+    const vals = parseProviderProduction(r.doctorRaw);
+    if (!vals.length) return;
+    const mk = `${r.year}-${String(r.monthNum).padStart(2,'0')}`;
+    const m = byMonth[mk] || (byMonth[mk] = { sum: 0, n: 0 });
+    for (const v of vals) { m.sum += v; m.n++; }
   });
   return Object.keys(byMonth).sort()
-    .map(mk => byMonth[mk].prov > 0 ? byMonth[mk].charge / byMonth[mk].prov : null)
+    .map(mk => byMonth[mk].n ? byMonth[mk].sum / byMonth[mk].n : null)
     .filter(v => v != null);
 }
 
-/* One-time console diagnostic: did the "Production by Doctor" column parse into
-   usable provider signals? Run after load so the basis (doctor vs day) is easy
-   to verify against the live sheet. Console only — no UI impact. */
+/* One-time console diagnostic: did the "Production by Doctor" column (column O)
+   parse into usable production figures? Console only — no UI impact. */
 function logProviderDetection() {
   try {
     const tabs = DEALS.filter(d => d.doctorColIdx != null).map(d => d.name);
     const rows = allData.filter(r => tabs.includes(r.deal));
-    const withSignal = rows.filter(r => { const p = parseProviders(r.doctorRaw); return p.names || p.count; });
-    const names = new Set();
+    const vals = providerProductionValues(rows);
+    const withVal = rows.filter(r => parseProviderProduction(r.doctorRaw).length).length;
     let sampleRaw = null;
-    rows.forEach(r => {
-      if (sampleRaw == null && r.doctorRaw != null && String(r.doctorRaw).trim() !== '') sampleRaw = r.doctorRaw;
-      const p = parseProviders(r.doctorRaw);
-      if (p.names) p.names.forEach(n => names.add(n));
-    });
-    console.log('[Dashboard] Production-by-Doctor parse:',
-      `${withSignal.length}/${rows.length} rows yielded a provider signal across ${tabs.join(', ')}.`,
-      names.size ? `Distinct provider names detected: ${names.size}.` : 'No names parsed (head-count or non-provider column).',
+    for (const r of rows) {
+      if (r.doctorRaw != null && String(r.doctorRaw).trim() !== '') { sampleRaw = r.doctorRaw; break; }
+    }
+    const avg = vals.length ? Math.round(vals.reduce((s,v)=>s+v,0)/vals.length) : null;
+    console.log('[Dashboard] Production-by-Doctor (col O) parse:',
+      `${withVal}/${rows.length} rows yielded a value across ${tabs.join(', ')}.`,
+      vals.length ? `${vals.length} provider-day observations · avg ≈ $${avg.toLocaleString()}.` : 'No positive values parsed.',
       sampleRaw != null ? `Sample cell: "${sampleRaw}".` : 'Column O was empty on sampled rows.');
   } catch (e) { /* diagnostic only */ }
 }
@@ -2353,7 +2317,7 @@ function renderRunRate() {
   // stale location (data ends weeks ago) from dragging the combined window to 0.
   const rr = calcRunRateByLocation(rows, 26);
   const annualized = rr ? rr.annualized : null;
-  set('rrCurrentSub', 'Annualize 26 complete weeks prior to current week');
+  set('rrCurrentSub', 'Annualize 26 recent complete weeks');
 
   // Portfolio TTM (per-location trailing-12 complete months) — identical scope
   // to the "Portfolio TTM vs LOI" block (filteredData), surfaced here as the
