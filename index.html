@@ -409,6 +409,9 @@ input[type="date"]:focus { outline: none; border-color: var(--navy); }
   display: grid; grid-template-columns: repeat(5,1fr);
   gap: 14px; margin-bottom: 22px;
 }
+.cmp-grid-4 { grid-template-columns: repeat(4,1fr); }
+.rr-var { display: inline-flex; align-items: center; gap: 6px; line-height: 1; }
+.rr-var .rr-arrow { font-size: 22px; line-height: 1; }
 .cmp-card {
   background: var(--surface2); border-radius: var(--radius-sm);
   border: 1.5px solid var(--border);
@@ -750,29 +753,28 @@ table.dt td.neg   { color: var(--red);   font-weight: 600; }
       <div class="chart-wrap"><canvas id="ttmTrendChart" height="170"></canvas></div>
     </div>
 
-    <div class="sec-head"><span class="sec-title">Forward Run-Rate &amp; Bridge</span><span class="sec-rule"></span></div>
+    <div class="sec-head"><span class="sec-title">Forward Run-Rate vs LOI</span><span class="sec-rule"></span></div>
     <div class="ttm-block" style="margin-bottom:24px">
-      <div class="rr-sub" id="rrBasis">Annualizing the most recent full weeks of collections.</div>
-      <div class="cmp-grid">
+      <div class="cmp-grid cmp-grid-4">
         <div class="cmp-card">
           <div class="cmp-label">LOI Baseline (Underwritten)</div>
           <div class="cmp-value" id="rrLOI" style="color:var(--navy)">—</div>
-          <div class="cmp-sub">Annual LOI revenue · in scope</div>
+          <div class="cmp-sub">Underwritten annual revenue</div>
         </div>
         <div class="cmp-card">
           <div class="cmp-label">Current Annualized Run-Rate</div>
           <div class="cmp-value" id="rrCurrent" style="color:var(--green)">—</div>
-          <div class="cmp-sub" id="rrCurrentSub">Last full weeks × 52</div>
-        </div>
-        <div class="cmp-card">
-          <div class="cmp-label">Projected Full Year</div>
-          <div class="cmp-value" id="rrProjFY" style="color:var(--blue)">—</div>
-          <div class="cmp-sub" id="rrProjFYSub">YTD actual + run-rate</div>
+          <div class="cmp-sub" id="rrCurrentSub">Projected full year</div>
         </div>
         <div class="cmp-card">
           <div class="cmp-label">Run-Rate vs LOI</div>
           <div class="cmp-value" id="rrVar">—</div>
-          <div class="cmp-sub">Holding the underwrite?</div>
+          <div class="cmp-sub">vs underwritten baseline</div>
+        </div>
+        <div class="cmp-card">
+          <div class="cmp-label">Underwrite Status</div>
+          <div class="cmp-value"><span id="rrStatus" class="rev-badge" style="font-size:14px;padding:5px 14px">—</span></div>
+          <div class="cmp-sub">Holding what we underwrote?</div>
         </div>
       </div>
       <div class="rr-bridge" id="rrBridge"></div>
@@ -780,11 +782,10 @@ table.dt td.neg   { color: var(--red);   font-weight: 600; }
 
     <div class="sec-head"><span class="sec-title">Key Performance Indicators</span><span class="sec-rule"></span></div>
     <div class="rag-legend">
-      RAG vs. each deal's own history (latest full month vs. trailing median):
-      <span class="rag-chip green">● Green</span> at/above median
-      <span class="rag-chip amber">● Amber</span> 3–10% below
-      <span class="rag-chip red">● Red</span> &gt;10% below
-      <span class="rag-legend-note">· rates banded in pp · calibrate per deal before locking</span>
+      Each metric is colour-coded against that deal's own normal month:
+      <span class="rag-chip green">● Green</span> on track
+      <span class="rag-chip amber">● Amber</span> slightly soft
+      <span class="rag-chip red">● Red</span> needs a look
     </div>
     <div class="kpi-grid" style="margin-bottom:24px">
       <div class="kpi-card" data-op>
@@ -805,12 +806,12 @@ table.dt td.neg   { color: var(--red);   font-weight: 600; }
       <div class="kpi-card amber" data-op>
         <div class="kpi-label">Adj. Collection Rate</div>
         <div class="kpi-value" id="kpiAdjCollRate">—</div>
-        <div class="kpi-sub">Collections ÷ gross charges<span class="rag-chip" id="ragRate"></span></div>
+        <div class="kpi-sub">Realization rate<span class="rag-chip" id="ragRate"></span></div>
       </div>
       <div class="kpi-card blue" data-op>
         <div class="kpi-label">Production / Provider-Day</div>
         <div class="kpi-value" id="kpiProvDay">—</div>
-        <div class="kpi-sub" id="kpiProvDaySub">Charges ÷ qualifying days<span class="rag-chip" id="ragProvDay"></span></div>
+        <div class="kpi-sub" id="kpiProvDaySub">Per provider-day<span class="rag-chip" id="ragProvDay"></span></div>
       </div>
       <div class="kpi-card" data-op>
         <div class="kpi-label">Patient Encounters</div>
@@ -832,29 +833,10 @@ table.dt td.neg   { color: var(--red);   font-weight: 600; }
         <div class="kpi-value sm" id="kpiLatestDate">—</div>
         <div class="kpi-sub" id="kpiLatestDateSub">Most recent entry</div>
       </div>
-    </div>
-
-    <div class="sec-head"><span class="sec-title">Deal Summary — TTM vs LOI</span><span class="sec-rule"></span></div>
-    <div class="tbl-card" style="margin-bottom:24px">
-      <div style="overflow-x:auto">
-        <table class="dt deal-sum-tbl">
-          <thead>
-            <tr>
-              <th class="l">Deal</th>
-              <th class="l">Stage</th>
-              <th class="l">TTM Period</th>
-              <th>Current TTM</th>
-              <th>LOI Revenue</th>
-              <th>$ Variance</th>
-              <th>% vs LOI</th>
-              <th class="l">Status</th>
-              <th class="l">Latest Data</th>
-            </tr>
-          </thead>
-          <tbody id="dealSummaryBody">
-            <tr><td colspan="9" style="text-align:center;color:var(--text3);padding:20px;">Loading…</td></tr>
-          </tbody>
-        </table>
+      <div class="kpi-card gray">
+        <div class="kpi-label">Deal Stage</div>
+        <div class="kpi-value sm" id="kpiStage">—</div>
+        <div class="kpi-sub" id="kpiStageSub">Current stage</div>
       </div>
     </div>
 
@@ -877,7 +859,7 @@ table.dt td.neg   { color: var(--red);   font-weight: 600; }
     </div>
     <div class="chart-card full">
       <div class="chart-title">Rolling TTM Revenue</div>
-      <div class="chart-sub">Trailing 12-month sum, updated each month · dashed line = LOI target (if set)</div>
+      <div class="chart-sub">Rolling 12-month revenue · dashed line = LOI target</div>
       <div class="chart-wrap"><canvas id="ttmTrendChart2" height="220"></canvas></div>
     </div>
   </div><!-- /tab-trends -->
@@ -1316,7 +1298,6 @@ function onFilterChange() {
   const f = getFilters();
   filteredData = allData.filter(r => {
     if (window._activeDeals && !window._activeDeals.has(r.deal)) return false;  // active deals only
-    if (!isFullDataMonth(r)) return false;   // drop the in-progress month globally
     if (f.deal && r.deal !== f.deal) return false;
     if (f.locs.size > 0 && !f.locs.has(r.location)) return false;
     if (f.start && r.date && r.date < new Date(f.start + 'T00:00:00')) return false;
@@ -1440,6 +1421,21 @@ function trimTrailingPartial(sorted) {
     if ((last.days || 0) < PARTIAL_MONTH_THRESHOLD * median) {
       arr = arr.slice(0, -1);                                // partial → drop and re-test the new last month
     } else break;                                            // last month is full → stop
+  }
+  return arr;
+}
+
+/* Drop incomplete trailing weeks (current week-in-progress or short final weeks)
+   so weekly comparisons only ever use complete weeks. A week is "short" if its
+   distinct working-day count is well below the scope's typical full week. */
+function trimCompleteWeeks(sorted) {
+  let arr = [...sorted].sort((a,b) => a.key.localeCompare(b.key));
+  if (arr.length < 2) return arr;
+  const med = median(arr.map(w => w.days)) || 5;
+  while (arr.length > 1) {
+    const last = arr[arr.length - 1];
+    if ((last.days || 0) < 0.6 * med) arr = arr.slice(0, -1);
+    else break;
   }
   return arr;
 }
@@ -1920,14 +1916,28 @@ function renderKPIs(monthly) {
   set('kpiCollections',fmtM(tAdj, true));
   set('kpiAdjCollRate', adjRate != null ? (adjRate*100).toFixed(1) + '%' : '—');
   set('kpiProvDay',    ppd.value != null ? fmtM(ppd.value, true) : '—');
-  set('kpiProvDaySub', ppd.value != null
-        ? `${ppd.qualDays} of ${ppd.totalDays} days · cut ${fmtM(ppd.threshold,true)}`
-        : 'No qualifying days');
+  set('kpiProvDaySub', ppd.value != null ? 'Per provider-day' : 'No qualifying days');
   set('kpiEncounters', tEnc ? numFmt(tEnc) : '—');
   set('kpiProcedures', tPrc ? numFmt(tPrc) : '—');
   set('kpiLocations',  locs.length);
   set('kpiLocationsSub', locs.length ? locs.slice(0,4).join(', ') + (locs.length>4 ? ` +${locs.length-4} more` : '') : 'None');
   set('kpiLatestDate', latest ? latest.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—');
+
+  // Deal Stage tile — show the stage when a single deal is in scope, otherwise
+  // summarise the portfolio.
+  const dealsInScope = [...new Set(filteredData.map(r => r.deal))];
+  const meta = window._dealMeta || {};
+  if (dealsInScope.length === 1) {
+    const stg = (meta[dealsInScope[0]] && meta[dealsInScope[0]].stage) || '';
+    set('kpiStage',    stg || 'n/a');
+    set('kpiStageSub', stg ? 'Current stage' : 'No stage on file');
+  } else if (dealsInScope.length > 1) {
+    set('kpiStage',    `${dealsInScope.length} deals`);
+    set('kpiStageSub', 'Select one deal to view stage');
+  } else {
+    set('kpiStage',    '—');
+    set('kpiStageSub', 'Current stage');
+  }
 
   applyTileRAG();
 }
@@ -2061,16 +2071,19 @@ function monthlyProvDaySeries(rows) {
 }
 
 /* ════════════════════════════════════════════════════════════
-   FORWARD RUN-RATE & BRIDGE
-   ────────────────────────────────────────────────────────────
-   Annualize the most recent full weeks of collections (default last 8;
-   uses fewer down to 4 if that's all that's clean). Builds the bridge:
-   LOI baseline (underwritten annual) → current annualized run-rate
-   (avg full-week collections × 52) → projected full year (YTD actual
-   collections + run-rate × weeks remaining in the calendar year).
-   Weekly/daily-granularity deals only; in-progress and short trailing
-   weeks are dropped so the run-rate reflects complete weeks.
+   FORWARD RUN-RATE vs LOI
    ════════════════════════════════════════════════════════════ */
+/* Run-rate variance bands (Current Annualized Run-Rate vs LOI):
+     > 0%          → green  (above the underwrite)
+     −1% to 0%     → amber  (essentially holding the underwrite)
+     < −1%         → red    (below the underwrite) */
+function runRateBand(varP) {
+  if (varP == null) return null;
+  if (varP > 0)        return { cls: 'out',   color: 'var(--green)', up: true,  status: 'Above underwrite' };
+  if (varP >= -0.01)   return { cls: 'watch', color: 'var(--amber)', up: false, status: 'Holding underwrite' };
+  return                      { cls: 'under', color: 'var(--red)',   up: false, status: 'Below underwrite' };
+}
+
 function renderRunRate() {
   const f = getFilters();
   // in-scope rows, date-range ignored, daily granularity (weekly needs weeks)
@@ -2081,77 +2094,71 @@ function renderRunRate() {
     return r.granularity === 'daily' && r.week;
   });
 
-  const weekly = aggregateWeekly(rows);
-  // completeness: drop trailing weeks with day-count well below the median
-  let weeks = [...weekly].sort((a,b) => a.key.localeCompare(b.key));
-  const medDays = median(weeks.map(w => w.days)) || 5;
-  while (weeks.length > 4) {
-    const last = weeks[weeks.length-1];
-    if ((last.days || 0) < 0.6 * medDays) weeks = weeks.slice(0, -1);
-    else break;
-  }
+  // Complete weeks only, most recent last.
+  const weeks = trimCompleteWeeks(aggregateWeekly(rows));
 
   const inScope = f.deal ? [f.deal] : [...new Set(filteredData.map(r=>r.deal))];
   const loiTotal = inScope.filter(dn => loiConfig[dn] > 0)
                           .reduce((s,dn) => s + loiConfig[dn], 0) || null;
 
-  const elBasis = document.getElementById('rrBasis');
-  const bridge  = document.getElementById('rrBridge');
+  const bridge   = document.getElementById('rrBridge');
+  const statusEl = document.getElementById('rrStatus');
+  const setStatus = (txt, cls) => {
+    if (!statusEl) return;
+    statusEl.textContent = txt;
+    statusEl.className = 'rev-badge' + (cls ? ' ' + cls : '');
+    if (!cls) { statusEl.style.background = 'transparent'; statusEl.style.color = 'var(--text3)'; }
+    else { statusEl.style.background = ''; statusEl.style.color = ''; }
+  };
 
   if (weeks.length < 4) {
     set('rrLOI', loiTotal ? fmtM(loiTotal, true) : '—');
-    set('rrCurrent', '—'); set('rrProjFY', '—'); set('rrVar', '—');
-    if (elBasis) elBasis.textContent = 'Not enough complete weekly data in scope to build a run-rate (need ≥4 full weeks of daily data).';
+    set('rrCurrent', '—'); set('rrCurrentSub', 'Projected full year');
+    set('rrVar', '—'); setS('rrVar', 'color', '');
+    setStatus('—', null);
     if (bridge) bridge.innerHTML = '';
     return;
   }
 
+  // Current annualized run-rate = average of the most recent 8 full weeks × 52.
+  // This is the projected full-year figure compared against the LOI baseline.
   const N = Math.min(8, weeks.length);
   const win = weeks.slice(-N);
   const avgWeek = win.reduce((s,w) => s + w.adjCollections, 0) / N;
   const annualized = avgWeek * 52;
 
-  // Projected full year = YTD actual (this calendar year, full weeks in scope)
-  // + run-rate × weeks remaining in the year.
-  const yr = new Date().getFullYear();
-  const ytdActual = weeks.filter(w => w.year === yr).reduce((s,w) => s + w.adjCollections, 0);
-  const lastWeekNo = win[win.length-1].week || 0;
-  const weeksRemaining = Math.max(0, 52 - lastWeekNo);
-  const projFY = ytdActual + avgWeek * weeksRemaining;
-
   set('rrLOI', loiTotal ? fmtM(loiTotal, true) : '—');
   set('rrCurrent', fmtM(annualized, true));
-  set('rrCurrentSub', `Avg of last ${N} full wk × 52 · ${fmtM(avgWeek,true)}/wk`);
-  set('rrProjFY', fmtM(projFY, true));
-  set('rrProjFYSub', `${yr} YTD ${fmtM(ytdActual,true)} + ${weeksRemaining}wk run-rate`);
+  set('rrCurrentSub', `Projected full year · last ${N} full weeks`);
 
   if (loiTotal) {
     const varP = (annualized - loiTotal) / loiTotal;
-    const el = document.getElementById('rrVar');
-    if (el) {
-      el.textContent = `${varP>=0?'+':''}${(varP*100).toFixed(1)}%`;
-      el.style.color = varP >= 0 ? 'var(--green)' : varP >= -0.02 ? 'var(--amber)' : 'var(--red)';
-    }
+    const band = runRateBand(varP);
+    const pct  = Math.round(Math.abs(varP) * 100);
+    const arrow = band.up ? '↗' : '↘';
+    setH('rrVar',
+      `<span class="rr-var" style="color:${band.color}">` +
+      `<span class="rr-arrow">${arrow}</span><span>${pct}%</span></span>`);
+    setStatus(band.status, band.cls);
   } else {
-    set('rrVar', '—');
-  }
-  if (elBasis) {
-    elBasis.textContent = `Annualizing the last ${N} complete weeks of collections in scope (avg ${fmtM(avgWeek,true)}/week). LOI = underwritten annual baseline.`;
+    set('rrVar', '—'); setS('rrVar', 'color', '');
+    setStatus('—', null);
   }
 
-  // Bridge bars scaled to the largest of the three values
+  // Two-bar comparison: LOI baseline vs current run-rate.
   if (bridge) {
-    const maxV = Math.max(loiTotal || 0, annualized, projFY) || 1;
-    const bar = (label, cls, val) => `
-      <div class="rr-bar-row">
-        <div class="rr-bar-label">${label}</div>
-        <div class="rr-bar-track"><div class="rr-bar-fill ${cls}" style="width:${Math.max(2, (val/maxV)*100).toFixed(1)}%"></div></div>
-        <div class="rr-bar-val">${val ? fmtM(val, true) : '—'}</div>
-      </div>`;
-    bridge.innerHTML =
-      (loiTotal ? bar('LOI Baseline', 'loi', loiTotal) : '') +
-      bar('Current Run-Rate', 'curr', annualized) +
-      bar('Projected FY', 'proj', projFY);
+    if (loiTotal) {
+      const maxV = Math.max(loiTotal, annualized) || 1;
+      const bar = (label, cls, val) => `
+        <div class="rr-bar-row">
+          <div class="rr-bar-label">${label}</div>
+          <div class="rr-bar-track"><div class="rr-bar-fill ${cls}" style="width:${Math.max(2, (val/maxV)*100).toFixed(1)}%"></div></div>
+          <div class="rr-bar-val">${val ? fmtM(val, true) : '—'}</div>
+        </div>`;
+      bridge.innerHTML = bar('LOI Baseline', 'loi', loiTotal) + bar('Current Run-Rate', 'curr', annualized);
+    } else {
+      bridge.innerHTML = '';
+    }
   }
 }
 
@@ -2391,26 +2398,17 @@ function renderPeriodSpotlight() {
     ? 'Revenue Period Analysis · Month T / T-1 / T-2'
     : 'Revenue Period Analysis · Week T / T-1 / T-2';
   if (sub) sub.textContent = isMonthly
-    ? '3 most recent full months · current year vs same month prior year · per location'
-    : '3 most recent weeks · current year vs same period prior year · per location';
+    ? 'Most recent 3 complete months vs same month prior year · per location'
+    : 'Most recent 3 complete weeks vs same week prior year · per location';
 
-  // Determine the candidate periods.
-  // MONTHLY view → the 3 most recent FULL months: drop any in-progress current
-  // calendar month, then roll back past any trailing partial month using the
-  // same day-count test as TTM, and take the last 3 keys.
-  // WEEKLY view  → unchanged: the 3 most recent weeks present in the data.
+  // Determine the candidate periods — complete months/weeks only.
   let periods;
   if (isMonthly) {
-    let months = aggregateMonthly(filteredData)
-      .filter(m => !isCurrentMonthKey(m.key));   // never count the in-progress month
-    months = trimTrailingPartial(months);        // roll back to the most recent FULL month
+    const months = trimTrailingPartial(aggregateMonthly(filteredData));
     periods = months.map(m => m.key).sort().slice(-3);   // [T-2, T-1, T]
   } else {
-    const periodSet = new Set();
-    filteredData.forEach(r => {
-      if (r.year && r.week) periodSet.add(`${r.year}-${String(r.week).padStart(2,'0')}`);
-    });
-    periods = [...periodSet].sort().slice(-3);   // [T-2, T-1, T]
+    const weeks = trimCompleteWeeks(aggregateWeekly(filteredData));
+    periods = weeks.map(w => w.key).sort().slice(-3);     // [T-2, T-1, T]
   }
   if (!periods.length) {
     tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--text3);padding:16px;">Not enough period data</td></tr>';
@@ -2722,60 +2720,19 @@ function renderLocDetail() {
   </div>`;
 }
 
-function renderDealSummary() {
-  const body = document.getElementById('dealSummaryBody');
-  if (!body) return;
-  const activeDealNames = [...new Set(filteredData.map(r => r.deal))].sort();
-  if (!activeDealNames.length) {
-    body.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--text3);padding:20px;">No data loaded</td></tr>';
-    return;
-  }
-  body.innerHTML = activeDealNames.map(dealName => {
-    const dealRows   = filteredData.filter(r => r.deal === dealName);
-    const dealMonthly = aggregateMonthly(dealRows);
-    const ttm        = calcTTM(dealMonthly);
-    const loi        = loiConfig[dealName] || null;
-    const varD       = ttm && loi ? ttm.amount - loi : null;
-    const varP       = varD != null && loi > 0 ? varD / loi : null;
-    const dates      = dealRows.filter(r=>r.date).map(r=>r.date.getTime());
-    const latest     = dates.length ? new Date(Math.max(...dates)) : null;
-    const varCol     = varD == null ? '' : varD >= 0 ? 'var(--green)' : 'var(--red)';
-    const stage      = (window._dealMeta && window._dealMeta[dealName] && window._dealMeta[dealName].stage) || '';
-    const stageHtml  = stage
-      ? `<span class="stage-badge">${esc(stage)}</span>`
-      : '<span style="color:var(--text3);font-size:11px">—</span>';
-    const pctHtml    = varP != null
-      ? `<span class="yoy-badge ${varP>=0?'pos':'neg'}">${varP>=0?'↑ +':'↓ '}${(varP*100).toFixed(1)}%</span>`
-      : '<span style="color:var(--text3);font-size:11px">Set in LOI Config</span>';
-    const status     = revenueStatus(ttm ? ttm.amount : null, loi);
-    const statusHtml = status
-      ? `<span class="rev-badge ${status.cls}">${status.label}</span>`
-      : '<span style="color:var(--text3);font-size:11px">—</span>';
-    return `<tr>
-      <td class="l deal-name">${esc(dispName(dealName))}</td>
-      <td class="l">${stageHtml}</td>
-      <td class="l period-lbl">${ttm ? ttm.periodLabel : '—'}</td>
-      <td style="font-weight:600">${ttm ? fmtM(ttm.amount, true) : '—'}</td>
-      <td>${loi ? fmtM(loi, true) : '<span style="color:var(--text3);font-size:11px">—</span>'}</td>
-      <td style="color:${varCol};font-weight:700">${varD != null ? (varD>=0?'↑ +':'↓ ')+fmtM(varD,true) : '—'}</td>
-      <td>${pctHtml}</td>
-      <td class="l">${statusHtml}</td>
-      <td class="l period-lbl">${latest ? latest.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—'}</td>
-    </tr>`;
-  }).join('');
-}
-
 /* ════════════════════════════════════════════════════════════
    MASTER RENDER
    ════════════════════════════════════════════════════════════ */
 function renderDashboard() {
-  const monthly    = aggregateMonthly(filteredData);
-  const weekly     = aggregateWeekly(filteredData);
+  // Headline KPIs use ALL in-scope data (incl. the in-progress period) so the
+  // dashboard is as up to date as possible. Every period-over-period comparison
+  // (trend, YoY, tables, spotlight) instead uses complete months/weeks only.
+  const monthly    = trimTrailingPartial(aggregateMonthly(filteredData));
+  const weekly     = trimCompleteWeeks(aggregateWeekly(filteredData));
   const periodData = currentView === 'monthly' ? monthly : weekly;
   renderAlerts();
   renderKPIs(monthly);
   renderRunRate();
-  renderDealSummary();
   renderTTMvsLOI(monthly);
   renderMainChart(periodData);
   renderYoY(monthly);
