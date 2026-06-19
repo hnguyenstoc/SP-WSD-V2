@@ -350,6 +350,30 @@ input[type="date"]:focus { outline: none; border-color: var(--navy); }
 }
 .sec-rule { flex: 1; height: 1px; background: var(--border); }
 
+/* ── ZOOM CONTROLS (Trends / YoY charts) ─────────────────── */
+.zoom-controls { display: flex; align-items: center; gap: 3px; flex-shrink: 0; }
+.zoom-btn {
+  width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;
+  border: 1.5px solid var(--border2); background: var(--surface); color: var(--navy);
+  border-radius: var(--radius-sm); cursor: pointer; font-size: 14px; font-weight: 700;
+  line-height: 1; transition: all 0.15s; user-select: none;
+}
+.zoom-btn:hover { background: var(--surface2); border-color: var(--navy); }
+.zoom-btn:disabled { opacity: 0.35; cursor: default; }
+.zoom-btn:disabled:hover { background: var(--surface); border-color: var(--border2); }
+.zoom-pct {
+  font-size: 10px; font-weight: 700; color: var(--text3); width: 36px;
+  text-align: center; letter-spacing: 0.2px; white-space: nowrap;
+}
+.zoom-fit {
+  font-size: 10px; font-weight: 700; color: var(--navy); cursor: pointer;
+  padding: 3px 9px; border-radius: var(--radius-sm); border: 1.5px solid var(--border2);
+  background: var(--surface); text-transform: uppercase; letter-spacing: 0.4px;
+  margin-left: 4px; transition: all 0.15s;
+}
+.zoom-fit:hover { background: var(--surface2); border-color: var(--navy); }
+.chart-wrap { transition: height 0.18s ease; }
+
 /* ── ALERT / WARNING BANNER ──────────────────────────────── */
 .alert {
   display: flex; align-items: flex-start; gap: 10px;
@@ -874,6 +898,12 @@ table.dt td.neg   { color: var(--red);   font-weight: 600; }
     <div class="sec-head">
       <span class="sec-title" id="trendLabel">Monthly Trend</span>
       <span class="sec-rule"></span>
+      <div class="zoom-controls">
+        <button class="zoom-btn" id="trends-zoom-out" onclick="zoomChange('trends',-1)" title="Zoom out">−</button>
+        <span class="zoom-pct" id="trends-zoom-pct">100%</span>
+        <button class="zoom-btn" id="trends-zoom-in" onclick="zoomChange('trends',1)" title="Zoom in">+</button>
+        <span class="zoom-fit" onclick="zoomFit('trends')" title="Shrink both charts to fit in view">Fit Both</span>
+      </div>
     </div>
     <div class="chart-row" style="margin-bottom:16px">
       <div class="chart-card full">
@@ -891,7 +921,14 @@ table.dt td.neg   { color: var(--red);   font-weight: 600; }
        TAB: YOY ANALYSIS
        ════════════════════════════════════════════ -->
   <div id="tab-yoy" class="tab-panel">
-    <div class="sec-head"><span class="sec-title">Year-over-Year Analysis · Trailing 12 Months</span><span class="sec-rule"></span></div>
+    <div class="sec-head"><span class="sec-title">Year-over-Year Analysis · Trailing 12 Months</span><span class="sec-rule"></span>
+      <div class="zoom-controls">
+        <button class="zoom-btn" id="yoy-zoom-out" onclick="zoomChange('yoy',-1)" title="Zoom out">−</button>
+        <span class="zoom-pct" id="yoy-zoom-pct">100%</span>
+        <button class="zoom-btn" id="yoy-zoom-in" onclick="zoomChange('yoy',1)" title="Zoom in">+</button>
+        <span class="zoom-fit" onclick="zoomFit('yoy')" title="Shrink both charts to fit in view">Fit Both</span>
+      </div>
+    </div>
 
     <div class="chart-card full" style="margin-bottom:16px">
       <div class="chart-title">YoY Growth % — the signal view</div>
@@ -1393,7 +1430,59 @@ function switchTab(id) {
     tg.title = isYoy ? 'YoY Analysis always uses monthly data' : '';
   }
   // Trigger chart resize after tab switch (Chart.js needs this on hidden canvases)
+  if (id === 'trends' || id === 'yoy') applyZoom(id);
   setTimeout(() => Object.values(charts).forEach(c => c?.resize?.()), 50);
+}
+
+/* ════════════════════════════════════════════════════════════
+   ZOOM CONTROLS  ·  Trends & YoY Analysis tabs
+   ────────────────────────────────────────────────────────────
+   Each chart's CSS height is scaled by a zoom factor. "Fit Both" jumps
+   to the smallest level so both charts in the tab are visible without
+   scrolling — telling the big-picture story at a glance. Zooming in
+   enlarges the charts for detail (may require scrolling).
+   ════════════════════════════════════════════════════════════ */
+const ZOOM_LEVELS = [0.5, 0.65, 0.8, 1, 1.25, 1.5, 1.75, 2];
+const ZOOM_DEFAULT_IDX = 3;             // 1.0×
+const ZOOM_FIT_IDX      = 0;            // smallest — both charts fit in view
+const zoomState = { trends: ZOOM_DEFAULT_IDX, yoy: ZOOM_DEFAULT_IDX };
+
+/* canvasId → its natural (1.0×) pixel height, taken from the height="" attr */
+const ZOOM_TARGETS = {
+  trends: [{ id: 'mainChart', base: 260 }, { id: 'ttmTrendChart2', base: 220 }],
+  yoy:    [{ id: 'yoyGrowthChart', base: 240 }, { id: 'yoyVintageChart', base: 260 }],
+};
+
+function applyZoom(tab) {
+  const idx = zoomState[tab];
+  const lvl = ZOOM_LEVELS[idx];
+  (ZOOM_TARGETS[tab] || []).forEach(({ id, base }) => {
+    const canvas = document.getElementById(id);
+    const wrap   = canvas && canvas.closest('.chart-wrap');
+    if (!wrap) return;
+    wrap.style.height = Math.round(base * lvl) + 'px';
+  });
+  const pctEl = document.getElementById(`${tab}-zoom-pct`);
+  if (pctEl) pctEl.textContent = Math.round(lvl * 100) + '%';
+  const outBtn = document.getElementById(`${tab}-zoom-out`);
+  const inBtn  = document.getElementById(`${tab}-zoom-in`);
+  if (outBtn) outBtn.disabled = idx === 0;
+  if (inBtn)  inBtn.disabled  = idx === ZOOM_LEVELS.length - 1;
+  // Chart.js needs an explicit resize once the container's new height has
+  // actually been laid out by the browser.
+  requestAnimationFrame(() => setTimeout(() => Object.values(charts).forEach(c => c?.resize?.()), 30));
+}
+
+function zoomChange(tab, dir) {
+  const next = zoomState[tab] + dir;
+  if (next < 0 || next >= ZOOM_LEVELS.length) return;
+  zoomState[tab] = next;
+  applyZoom(tab);
+}
+
+function zoomFit(tab) {
+  zoomState[tab] = ZOOM_FIT_IDX;
+  applyZoom(tab);
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -1473,6 +1562,43 @@ function trimTrailingPartial(sorted) {
     if ((last.days || 0) < PARTIAL_MONTH_THRESHOLD * median) {
       arr = arr.slice(0, -1);                                // partial → drop and re-test the new last month
     } else break;                                            // last month is full → stop
+  }
+  return arr;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   COMBINED (ALL-DEALS) YOY TRIM
+   ─────────────────────────────────────────────────────────────
+   At the all-deals-combined level, a calendar month's combined total is
+   the sum across every location in scope. If even one location simply
+   hasn't reported a given recent month yet (data lag), that month's
+   combined total silently understates — it gets treated like a real
+   decline rather than a missing-data gap. This trims trailing months off
+   a combined monthly series until every in-scope location has at least
+   one record in the remaining final month, so YoY only ever compares
+   months that are genuinely complete across the whole portfolio.
+
+   Only applied at the combined (multiple-deals) level — individual deal
+   views are left exactly as-is, since `trimTrailingPartial` already
+   handles single-deal/location partial-month trimming. Self-adjusting:
+   as new data lands for a location, the window automatically extends. */
+function trimTrailingIncompleteLocations(monthly, rows) {
+  const locs = [...new Set(rows.map(r => r.location).filter(Boolean))];
+  if (locs.length <= 1) return monthly;      // nothing to reconcile across
+
+  const locKeys = {};
+  locs.forEach(loc => { locKeys[loc] = new Set(); });
+  rows.forEach(r => {
+    if (!r.year || !r.monthNum || !r.location) return;
+    locKeys[r.location]?.add(`${r.year}-${String(r.monthNum).padStart(2,'0')}`);
+  });
+
+  let arr = [...monthly].sort((a,b) => a.key.localeCompare(b.key));
+  while (arr.length > 1) {
+    const last = arr[arr.length - 1];
+    const allReported = locs.every(loc => locKeys[loc].has(last.key));
+    if (!allReported) arr = arr.slice(0, -1);   // drop & re-test the new last month
+    else break;
   }
   return arr;
 }
@@ -2525,13 +2651,21 @@ function renderTTMvsLOI(monthly) {
 }
 
 function renderYoY(monthly) {
-  const yoy12   = calcYoY(monthly, 12);
-  const yoyFull = calcYoYFull(monthly);
+  // At the combined (all-deals / multi-deal) level, reconcile trailing months
+  // so a location that simply hasn't reported yet doesn't masquerade as a
+  // revenue decline. Individual deal-level views are left untouched.
+  const dealsInScope = [...new Set(filteredData.map(r => r.deal))];
+  const yoyMonthly = dealsInScope.length > 1
+    ? trimTrailingIncompleteLocations(monthly, filteredData)
+    : monthly;
+
+  const yoy12   = calcYoY(yoyMonthly, 12);
+  const yoyFull = calcYoYFull(yoyMonthly);
   // Growth signal = trailing 12 months that actually have a prior-year comparison
   // (yoyFull is newest-first, so take the first 12 and flip to chronological).
   const growth12 = yoyFull.slice(0, 12).reverse();
   renderYoYGrowthChart(growth12);
-  renderYoYVintageChart(monthly);
+  renderYoYVintageChart(yoyMonthly);
 
   // helper: render a % badge
   function yoyPctBadge(pct) {
@@ -3153,6 +3287,8 @@ function bootAuth() {
   }
 }
 
+applyZoom('trends');
+applyZoom('yoy');
 bootAuth();
 </script>
 </body>
