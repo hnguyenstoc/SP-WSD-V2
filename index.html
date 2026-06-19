@@ -672,7 +672,7 @@ table.dt td.neg   { color: var(--red);   font-weight: 600; }
     <div class="header-sep"></div>
     <div>
       <div class="header-title">Pipeline Sales Dashboard</div>
-      <div class="header-sub">Production &amp; Collection Tracker · Live Data</div>
+      <div class="header-sub">Gross Production &amp; Adj. Revenue Tracker · Live Data</div>
     </div>
   </div>
   <div class="header-right">
@@ -771,12 +771,12 @@ table.dt td.neg   { color: var(--red);   font-weight: 600; }
     <div class="ttm-block" style="margin-bottom:24px">
       <div class="cmp-grid">
         <div class="cmp-card">
-          <div class="cmp-label">TTM Revenue</div>
+          <div class="cmp-label">TTM Adj. Revenue</div>
           <div class="cmp-value" id="cmpTTM" style="color:var(--green)">—</div>
           <div class="cmp-sub" id="cmpTTMPeriod">Most recent 12 months</div>
         </div>
         <div class="cmp-card">
-          <div class="cmp-label">LOI Revenue</div>
+          <div class="cmp-label">LOI Adj. Revenue</div>
           <div class="cmp-value" id="cmpLOI" style="color:var(--navy)">—</div>
           <div class="cmp-sub">From LOI Config tab (editable)</div>
         </div>
@@ -791,7 +791,7 @@ table.dt td.neg   { color: var(--red);   font-weight: 600; }
           <div class="cmp-sub">TTM vs LOI</div>
         </div>
         <div class="cmp-card">
-          <div class="cmp-label">Revenue Status</div>
+          <div class="cmp-label">Adj. Revenue Status</div>
           <div class="cmp-value"><span id="cmpStatus" class="rev-badge" style="font-size:14px;padding:5px 14px">—</span></div>
           <div class="cmp-sub">vs. LOI baseline</div>
         </div>
@@ -806,7 +806,7 @@ table.dt td.neg   { color: var(--red);   font-weight: 600; }
         <div class="cmp-card">
           <div class="cmp-label">LOI Baseline</div>
           <div class="cmp-value" id="rrLOI" style="color:var(--navy)">—</div>
-          <div class="cmp-sub">Annual LOI revenue</div>
+          <div class="cmp-sub">Annual LOI Adj. Revenue</div>
         </div>
         <div class="cmp-card">
           <div class="cmp-label">Current Annualized Run-Rate</div>
@@ -830,19 +830,14 @@ table.dt td.neg   { color: var(--red);   font-weight: 600; }
     <div class="sec-head"><span class="sec-title">Key Performance Indicators</span><span class="sec-rule"></span></div>
     <div class="kpi-grid" style="margin-bottom:24px">
       <div class="kpi-card" data-op>
-        <div class="kpi-label">TTM Revenue</div>
+        <div class="kpi-label">TTM Adj. Revenue</div>
         <div class="kpi-value" id="kpiTTM">—</div>
         <div class="kpi-sub" id="kpiTTMPeriod">Trailing 12 months<span class="rag-chip" id="ragTTM"></span></div>
       </div>
       <div class="kpi-card blue" data-op>
-        <div class="kpi-label">Total Production</div>
-        <div class="kpi-value" id="kpiCharge">—</div>
-        <div class="kpi-sub">Gross production · selected period<span class="rag-chip" id="ragCharge"></span></div>
-      </div>
-      <div class="kpi-card green" data-op>
-        <div class="kpi-label">Total Revenue</div>
-        <div class="kpi-value" id="kpiCollections">—</div>
-        <div class="kpi-sub">Collections · selected period<span class="rag-chip" id="ragColl"></span></div>
+        <div class="kpi-label">TTM Gross Production</div>
+        <div class="kpi-value" id="kpiTTMProd">—</div>
+        <div class="kpi-sub" id="kpiTTMProdPeriod">Trailing 12 months<span class="rag-chip" id="ragTTMProd"></span></div>
       </div>
       <div class="kpi-card amber" data-op>
         <div class="kpi-label">Adj. Collection Rate</div>
@@ -850,14 +845,13 @@ table.dt td.neg   { color: var(--red);   font-weight: 600; }
         <div class="kpi-sub">Realization rate<span class="rag-chip" id="ragRate"></span></div>
       </div>
       <div class="kpi-card blue" data-op>
-        <div class="kpi-label">Production / Provider-Day</div>
+        <div class="kpi-label">Avg. Daily Production by Provider</div>
         <div class="kpi-value" id="kpiProvDay">—</div>
-        <div class="kpi-sub" id="kpiProvDaySub">Per provider-day<span class="rag-chip" id="ragProvDay"></span></div>
       </div>
       <div class="kpi-card gray">
         <div class="kpi-label">Active Locations</div>
         <div class="kpi-value" id="kpiLocations">—</div>
-        <div class="kpi-sub" id="kpiLocationsSub">In selected view</div>
+        <div class="kpi-sub">In selected view</div>
       </div>
       <div class="kpi-card gray">
         <div class="kpi-label">Latest Data Point</div>
@@ -889,8 +883,8 @@ table.dt td.neg   { color: var(--red);   font-weight: 600; }
       </div>
     </div>
     <div class="chart-card full">
-      <div class="chart-title">Rolling TTM Revenue</div>
-      <div class="chart-sub">Rolling 12-month revenue · dashed line = LOI target</div>
+      <div class="chart-title">Rolling TTM Adj. Revenue</div>
+      <div class="chart-sub">Rolling 12-month Adj. Revenue · dashed line = LOI target</div>
       <div class="chart-wrap"><canvas id="ttmTrendChart2" height="220"></canvas></div>
     </div>
   </div><!-- /tab-trends -->
@@ -899,36 +893,42 @@ table.dt td.neg   { color: var(--red);   font-weight: 600; }
        TAB: YOY ANALYSIS
        ════════════════════════════════════════════ -->
   <div id="tab-yoy" class="tab-panel">
-    <div class="sec-head"><span class="sec-title">Year-over-Year Growth · Most Recent 5 Months</span><span class="sec-rule"></span></div>
-    <div class="yoy-grid" style="margin-bottom:20px">
-      <div class="chart-card">
-        <div class="chart-title">YoY Revenue</div>
-        <div class="chart-sub">Current year (green) vs. prior year (navy) — same calendar month</div>
-        <div class="chart-wrap"><canvas id="yoyChart" height="260"></canvas></div>
+    <div class="sec-head"><span class="sec-title">Year-over-Year Analysis · Trailing 12 Months</span><span class="sec-rule"></span></div>
+
+    <div class="chart-card full" style="margin-bottom:16px">
+      <div class="chart-title">YoY Growth % — the signal view</div>
+      <div class="chart-sub">Adj. Revenue vs. same calendar month one year prior · green = growth, red = decline · trailing 12 months</div>
+      <div class="chart-wrap"><canvas id="yoyGrowthChart" height="240"></canvas></div>
+    </div>
+
+    <div class="chart-card full" style="margin-bottom:20px">
+      <div class="chart-title">Adj. Revenue by Vintage</div>
+      <div class="chart-sub">Same calendar month compared across vintages (acquisition years) — gaps between vintages flag revenue leakage</div>
+      <div class="chart-wrap"><canvas id="yoyVintageChart" height="260"></canvas></div>
+    </div>
+
+    <div class="tbl-card" style="margin-bottom:20px">
+      <div class="tbl-head">
+        <div>
+          <div class="tbl-head-title">YoY Comparison</div>
+          <div class="tbl-head-sub">Adj. Revenue — most recent 12 months</div>
+        </div>
       </div>
-      <div class="tbl-card">
-        <div class="tbl-head">
-          <div>
-            <div class="tbl-head-title">YoY Comparison</div>
-            <div class="tbl-head-sub">Revenue — most recent 5 months</div>
-          </div>
-        </div>
-        <div style="overflow-x:auto">
-          <table class="dt">
-            <thead>
-              <tr>
-                <th class="l">Month</th>
-                <th>Current Yr</th>
-                <th>Prior Yr</th>
-                <th>$ Change</th>
-                <th>% Growth</th>
-              </tr>
-            </thead>
-            <tbody id="yoyTableBody">
-              <tr><td class="l" colspan="5" style="text-align:center;color:var(--text3);padding:20px;">Loading…</td></tr>
-            </tbody>
-          </table>
-        </div>
+      <div style="overflow-x:auto">
+        <table class="dt">
+          <thead>
+            <tr>
+              <th class="l">Month</th>
+              <th>This Yr</th>
+              <th>Prior Yr</th>
+              <th>$ Change</th>
+              <th>% Growth</th>
+            </tr>
+          </thead>
+          <tbody id="yoyTableBody">
+            <tr><td class="l" colspan="5" style="text-align:center;color:var(--text3);padding:20px;">Loading…</td></tr>
+          </tbody>
+        </table>
       </div>
     </div>
     <!-- Extended YoY table — all available months -->
@@ -945,7 +945,7 @@ table.dt td.neg   { color: var(--red);   font-weight: 600; }
           <thead>
             <tr>
               <th class="l">Month</th>
-              <th>Current Yr</th>
+              <th>This Yr</th>
               <th>Prior Yr</th>
               <th>$ Change</th>
               <th>% Growth</th>
@@ -982,7 +982,7 @@ table.dt td.neg   { color: var(--red);   font-weight: 600; }
       </div>
     </div>
     <!-- Revenue Period Analysis: T, T-1, T-2 × YoY per location -->
-    <div class="sec-head" style="margin-top:28px"><span class="sec-title" id="periodSpotlightLabel">Revenue Period Analysis · T / T-1 / T-2</span><span class="sec-rule"></span></div>
+    <div class="sec-head" style="margin-top:28px"><span class="sec-title" id="periodSpotlightLabel">Adj. Revenue Period Analysis · T / T-1 / T-2</span><span class="sec-rule"></span></div>
     <div class="tbl-card" style="margin-bottom:24px">
       <div class="tbl-head">
         <div>
@@ -1372,12 +1372,12 @@ function setView(v) {
   document.getElementById('btnWeekly').classList.toggle('active', v === 'weekly');
   const lbl = v === 'monthly' ? 'Monthly' : 'Weekly';
   document.getElementById('trendLabel').textContent     = lbl + ' Trend';
-  document.getElementById('mainChartTitle').textContent = lbl + ' Revenue';
-  document.getElementById('mainChartSub').textContent   = `Bars = Production · Line = Revenue — aggregated by ${v.toLowerCase()} period`;
+  document.getElementById('mainChartTitle').textContent = lbl + ' Adj. Revenue';
+  document.getElementById('mainChartSub').textContent   = `Bars = Gross Production · Line = Adj. Revenue — aggregated by ${v.toLowerCase()} period`;
   document.getElementById('perfTableSectionLabel').textContent = lbl + ' Performance Detail';
   document.getElementById('perfTableTitle').textContent = lbl + ' Summary';
   const locSub = document.getElementById('locTableSub');
-  if (locSub) locSub.textContent = `Sorted by Revenue · ${lbl.toLowerCase()} view · filtered period`;
+  if (locSub) locSub.textContent = `Sorted by Adj. Revenue · ${lbl.toLowerCase()} view · filtered period`;
   renderDashboard();
 }
 
@@ -1596,7 +1596,7 @@ const CURRENT_MONTH_KEY = `${CURRENT_Y}-${String(CURRENT_M).padStart(2,'0')}`;
    current month). Returns the window span (minStartKey…maxEndKey) so individual
    deal/location views can label the exact period; the combined view suppresses
    it because locations span different windows. */
-function calcTTMByLocation(rows) {
+function calcTTMByLocation(rows, field = 'adjCollections') {
   const groups = groupByDealLoc(rows);
   let total = 0, anyData = false, allFull = true, maxEndKey = null, minStartKey = null;
   const perDeal = {};
@@ -1609,7 +1609,7 @@ function calcTTMByLocation(rows) {
     const endIdx   = sorted.length - 1;
     const startIdx = Math.max(0, endIdx - 11);
     const win      = sorted.slice(startIdx, endIdx + 1);
-    const amt      = win.reduce((s,m) => s + m.adjCollections, 0);
+    const amt      = win.reduce((s,m) => s + m[field], 0);
     const endKey   = sorted[endIdx].key;
     const startKey = win[0].key;
     total += amt; anyData = true;
@@ -1925,7 +1925,7 @@ function renderTTMTrend(canvasId, rolling, loiTotal) {
   destroyChart(canvasId);
   if (!rolling.length) return;
   const datasets = [{
-    label: 'Rolling TTM Revenue',
+    label: 'Rolling TTM Adj. Revenue',
     data: rolling.map(r => r.amount),
     borderColor: '#1B6E45', backgroundColor: 'rgba(27,110,69,0.07)',
     borderWidth: 2.5, pointRadius: 3, fill: true, tension: 0.35,
@@ -1997,12 +1997,12 @@ function renderMainChart(data) {
       labels: allD.map(x => x.label + (isCurrentMonthKey(x.key) ? ' *' : '')),
       datasets: [
         {
-          label: 'Production',
+          label: 'Gross Production',
           data: allD.map(x => x.chargeAmount),
           backgroundColor: bgColors, borderColor: bdColors, borderWidth: 1, order: 2,
         },
         {
-          type: 'line', label: 'Revenue',
+          type: 'line', label: 'Adj. Revenue',
           data: allD.map(x => x.adjCollections),
           borderColor: '#1B6E45', borderWidth: 2.5, backgroundColor: 'transparent',
           pointRadius: 3, pointBackgroundColor: '#1B6E45', tension: 0.25, order: 1, spanGaps: true,
@@ -2025,59 +2025,138 @@ function renderMainChart(data) {
   });
 }
 
-function renderYoYChart(yoy) {
-  destroyChart('yoy');
-  const d = yoy.filter(r => r.prior != null);
+/* Navy color ramp for the vintage chart — oldest vintage = lightest steel-blue,
+   most recent vintage = the deep banner navy (#1B3564). */
+function navyRamp(n) {
+  const light = [173, 188, 217];   // #ADBCD9
+  const dark  = [27, 53, 100];     // #1B3564 (banner navy)
+  if (n <= 1) return ['rgb(27,53,100)'];
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const t = i / (n - 1);
+    const c = light.map((lc, k) => Math.round(lc + (dark[k] - lc) * t));
+    out.push(`rgb(${c[0]},${c[1]},${c[2]})`);
+  }
+  return out;
+}
+
+/* YoY growth % "signal view" — one bar per trailing month, green if Adj. Revenue
+   grew vs. the same month a year earlier, red if it declined. % printed on each bar. */
+function renderYoYGrowthChart(rows) {
+  destroyChart('yoyGrowth');
+  const el = document.getElementById('yoyGrowthChart');
+  if (!el) return;
+  const d = rows.filter(r => r.pctChg != null);
   if (!d.length) return;
-  charts.yoy = new Chart(document.getElementById('yoyChart'), {
+  const vals = d.map(r => r.pctChg * 100);
+
+  const labelPlugin = {
+    id: 'yoyGrowthLabels',
+    afterDatasetsDraw(chart) {
+      const { ctx } = chart;
+      const meta = chart.getDatasetMeta(0);
+      ctx.save();
+      ctx.font = '600 11px Inter, sans-serif';
+      ctx.textAlign = 'center';
+      meta.data.forEach((bar, i) => {
+        const v = vals[i];
+        ctx.fillStyle = v >= 0 ? '#1B6E45' : '#C0392B';
+        ctx.textBaseline = v >= 0 ? 'bottom' : 'top';
+        const offset = v >= 0 ? -5 : 5;
+        ctx.fillText(`${v >= 0 ? '+' : ''}${v.toFixed(1)}%`, bar.x, bar.y + offset);
+      });
+      ctx.restore();
+    }
+  };
+
+  charts.yoyGrowth = new Chart(el, {
     type: 'bar',
     data: {
       labels: d.map(r => r.month + (isCurrentMonthKey(r.key) ? ' *' : '')),
-      datasets: [
-        {
-          type: 'bar',
-          label: 'Current Year',
-          data: d.map(r => r.current),
-          backgroundColor: 'rgba(27,110,69,0.72)',
-          borderColor: '#1B6E45', borderWidth: 1,
-          order: 2,
-        },
-        {
-          type: 'line',
-          label: 'Prior Year',
-          data: d.map(r => r.prior),
-          borderColor: '#1B3564', borderWidth: 2.5,
-          backgroundColor: 'transparent',
-          pointRadius: 5, pointBackgroundColor: '#fff',
-          pointBorderColor: '#1B3564', pointBorderWidth: 2,
-          tension: 0.2, order: 1,
-        },
-      ],
+      datasets: [{
+        label: 'YoY Growth %',
+        data: vals,
+        backgroundColor: vals.map(v => v >= 0 ? 'rgba(27,110,69,0.80)' : 'rgba(192,57,43,0.82)'),
+        borderColor:     vals.map(v => v >= 0 ? '#1B6E45' : '#C0392B'),
+        borderWidth: 1,
+        borderRadius: 3,
+      }],
     },
     options: {
       responsive: true, maintainAspectRatio: false, animation: { duration: 400 },
+      layout: { padding: { top: 18, bottom: 6 } },
       plugins: {
-        legend: { labels: { boxWidth: 12, padding: 12 } },
+        legend: { display: false },
         tooltip: {
           ...TOOLTIP,
           callbacks: {
-            label: c => ' ' + fmtM(c.raw),
+            label: c => ` YoY: ${c.raw >= 0 ? '+' : ''}${c.raw.toFixed(1)}%`,
             afterBody: items => {
-              const i = items[0]?.dataIndex;
-              if (i == null) return [];
-              const r = d[i];
-              const parts = [];
-              if (r.pctChg != null) parts.push(`YoY: ${r.pctChg>=0?'+':''}${(r.pctChg*100).toFixed(1)}%`);
+              const r = d[items[0]?.dataIndex];
+              if (!r) return [];
+              const parts = [`This year: ${fmtM(r.current)}`, `Prior year: ${fmtM(r.prior)}`];
               if (isCurrentMonthKey(r.key)) parts.push('* Partial month — in progress');
               return parts;
             }
           }
         }
       },
-      scales: { x: { ...SCALE_X, ticks: { ...SCALE_X.ticks, maxRotation: 0 } }, y: SCALE_Y_DOLLAR },
+      scales: {
+        x: { ...SCALE_X, ticks: { ...SCALE_X.ticks, maxRotation: 0 } },
+        y: {
+          ticks: { color: '#9CA3AF', font: { size: 10 }, callback: v => v + '%' },
+          grid:  { color: '#F3F4F6' },
+        },
+      },
+    },
+    plugins: [labelPlugin],
+  });
+}
+
+/* Vintage comparison — bars grouped by calendar month, one series per vintage
+   (calendar/acquisition year), navy palette. Lets you read the same month across
+   vintages and spot revenue leakage where a later vintage sits below an earlier one. */
+function renderYoYVintageChart(monthly) {
+  destroyChart('yoyVintage');
+  const el = document.getElementById('yoyVintageChart');
+  if (!el) return;
+  const years  = [...new Set(monthly.map(m => m.year))].sort((a, b) => a - b);
+  const months = [...new Set(monthly.map(m => m.monthNum))].sort((a, b) => a - b);
+  if (!years.length || !months.length) return;
+
+  const byKey = {};
+  monthly.forEach(m => { byKey[`${m.year}-${m.monthNum}`] = m.adjCollections; });
+
+  const colors = navyRamp(years.length);
+  const datasets = years.map((y, i) => ({
+    label: String(y),
+    data: months.map(mn => byKey[`${y}-${mn}`] ?? null),
+    backgroundColor: colors[i],
+    borderColor: colors[i],
+    borderWidth: 1,
+    borderRadius: 2,
+  }));
+
+  charts.yoyVintage = new Chart(el, {
+    type: 'bar',
+    data: { labels: months.map(mn => MO_SHORT[mn - 1]), datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: { duration: 400 },
+      plugins: {
+        legend: { labels: { boxWidth: 12, padding: 12 } },
+        tooltip: {
+          ...TOOLTIP,
+          callbacks: { label: c => c.raw == null ? null : ` ${c.dataset.label}: ${fmtM(c.raw)}` },
+        }
+      },
+      scales: {
+        x: { ...SCALE_X, ticks: { ...SCALE_X.ticks, maxRotation: 0 } },
+        y: SCALE_Y_DOLLAR,
+      },
     },
   });
 }
+
 
 /* ════════════════════════════════════════════════════════════
    RENDERERS
@@ -2093,7 +2172,10 @@ function renderKPIs(monthly) {
   const locs = [...new Set(d.map(r=>r.location).filter(Boolean))];
   // TTM headline = per-location trailing-12 complete months rolled up (each
   // location anchored to its own latest complete month).
-  const ttmRes = calcTTMByLocation(d);
+  const ttmRes     = calcTTMByLocation(d);
+  // TTM Production = identical roll-up logic, run on gross production
+  // (chargeAmount) instead of revenue (adjCollections) so the two tiles align.
+  const ttmProdRes = calcTTMByLocation(d, 'chargeAmount');
   const dates = d.filter(r=>r.date).map(r=>r.date.getTime());
   const latest = dates.length ? new Date(Math.max(...dates)) : null;
 
@@ -2106,15 +2188,11 @@ function renderKPIs(monthly) {
 
   set('kpiTTM',        ttmRes ? fmtM(ttmRes.amount, true) : '—');
   set('kpiTTMPeriod',  ttmPeriodText(ttmRes));
-  set('kpiCharge',     fmtM(tC, true));
-  set('kpiCollections',fmtM(tAdj, true));
+  set('kpiTTMProd',    ttmProdRes ? fmtM(ttmProdRes.amount, true) : '—');
+  set('kpiTTMProdPeriod', ttmPeriodText(ttmProdRes));
   set('kpiAdjCollRate', adjRate != null ? (adjRate*100).toFixed(1) + '%' : '—');
   set('kpiProvDay',    ppd.value != null ? fmtM(ppd.value, true) : '—');
-  set('kpiProvDaySub', ppd.value == null
-        ? 'No production-by-provider data'
-        : `Avg daily production · ${ppd.n.toLocaleString()} provider-days`);
   set('kpiLocations',  locs.length);
-  set('kpiLocationsSub', locs.length ? locs.slice(0,4).join(', ') + (locs.length>4 ? ` +${locs.length-4} more` : '') : 'None');
   set('kpiLatestDate', latest ? latest.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—');
 
   // Deal Stage tile — show the stage when a single deal is in scope, otherwise
@@ -2204,11 +2282,9 @@ function applyTileRAG() {
     if (card) card.classList.add('rag-' + band.cls);
   };
 
-  setChip('ragTTM',    ragBand(mSeries.map(m => m.adjCollections)));
-  setChip('ragColl',   ragBand(mSeries.map(m => m.adjCollections)));
-  setChip('ragCharge', ragBand(mSeries.map(m => m.chargeAmount)));
+  setChip('ragTTM',     ragBand(mSeries.map(m => m.adjCollections)));
+  setChip('ragTTMProd', ragBand(mSeries.map(m => m.chargeAmount)));
   setChip('ragRate',   ragBand(mSeries.map(m => m.collRate), { pp:true }));
-  setChip('ragProvDay',ragBand(monthlyProvDaySeries(rows)));
 }
 
 /* ── Production / Provider-Day (average of daily production by provider) ──────
@@ -2452,9 +2528,13 @@ function renderTTMvsLOI(monthly) {
 }
 
 function renderYoY(monthly) {
-  const yoy5    = calcYoY(monthly, 5);
+  const yoy12   = calcYoY(monthly, 12);
   const yoyFull = calcYoYFull(monthly);
-  renderYoYChart(yoy5);
+  // Growth signal = trailing 12 months that actually have a prior-year comparison
+  // (yoyFull is newest-first, so take the first 12 and flip to chronological).
+  const growth12 = yoyFull.slice(0, 12).reverse();
+  renderYoYGrowthChart(growth12);
+  renderYoYVintageChart(monthly);
 
   // helper: render a % badge
   function yoyPctBadge(pct) {
@@ -2466,12 +2546,12 @@ function renderYoY(monthly) {
     return r.month + (isCurrentMonthKey(r.key) ? '<span class="partial-tag">partial</span>' : '');
   }
 
-  // 5-month table
+  // 12-month comparison table
   const tb5 = document.getElementById('yoyTableBody');
-  if (!yoy5.length) {
+  if (!yoy12.length) {
     tb5.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text3);padding:20px;">No data</td></tr>';
   } else {
-    tb5.innerHTML = yoy5.map(r => `<tr>
+    tb5.innerHTML = yoy12.map(r => `<tr>
       <td class="l bold">${yoyMonthLabel(r)}</td>
       <td>${fmtM(r.current, true)}</td>
       <td>${r.prior != null ? fmtM(r.prior, true) : '<span style="color:var(--text3)">—</span>'}</td>
@@ -2519,7 +2599,7 @@ function renderPerfTable(periodData) {
   const body = document.getElementById('perfTableBody');
   head.innerHTML = `<tr>
     <th class="l">${isM ? 'Period' : 'Week'}</th>
-    <th>Production</th><th>Revenue</th>
+    <th>Gross Production</th><th>Adj. Revenue</th>
     <th>Procedures</th>
     <th>Encounters</th><th>${isM ? 'Working Days' : 'Days'}</th>
   </tr>`;
@@ -2628,8 +2708,8 @@ function renderPeriodSpotlight() {
 
   const isMonthly = currentView === 'monthly';
   if (lbl) lbl.textContent = isMonthly
-    ? 'Revenue Period Analysis · Month T / T-1 / T-2'
-    : 'Revenue Period Analysis · Week T / T-1 / T-2';
+    ? 'Adj. Revenue Period Analysis · Month T / T-1 / T-2'
+    : 'Adj. Revenue Period Analysis · Week T / T-1 / T-2';
   if (sub) sub.textContent = isMonthly
     ? 'Most recent 3 complete months vs same month prior year · per location'
     : 'Most recent 3 complete weeks vs same week prior year · per location';
