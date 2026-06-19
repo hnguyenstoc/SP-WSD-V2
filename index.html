@@ -2013,7 +2013,7 @@ function renderMainChart(data) {
       },
       scales: {
         x: { ...SCALE_X, ticks: { ...SCALE_X.ticks, maxTicksLimit: 12, maxRotation: 30 } },
-        y: { ...SCALE_Y_DOLLAR, beginAtZero: true },
+        y: SCALE_Y_DOLLAR,
       },
     },
     plugins: [revLabelPlugin],
@@ -2099,9 +2099,6 @@ function renderYoYGrowthChart(rows) {
       scales: {
         x: { ...SCALE_X, ticks: { ...SCALE_X.ticks, maxRotation: 0 } },
         y: {
-          // Soft bounds: keep a steady ±10% baseline window so small months don't
-          // get over-magnified, but let big swings (e.g. −57%) expand the axis.
-          suggestedMin: -10, suggestedMax: 10, grace: '8%',
           ticks: { color: '#9CA3AF', font: { size: 10 }, callback: v => v + '%' },
           grid:  { color: '#F3F4F6' },
         },
@@ -2149,7 +2146,7 @@ function renderYoYVintageChart(monthly) {
       },
       scales: {
         x: { ...SCALE_X, ticks: { ...SCALE_X.ticks, maxRotation: 0 } },
-        y: { ...SCALE_Y_DOLLAR, beginAtZero: true },
+        y: SCALE_Y_DOLLAR,
       },
     },
   });
@@ -2527,46 +2524,14 @@ function renderTTMvsLOI(monthly) {
   renderTTMTrend('ttmTrendChart2', rolling, loiTotal);
 }
 
-/* COMBINED-LEVEL DATA COMPLETENESS
-   ────────────────────────────────────────────────────────────
-   When more than one deal is in scope (the "All Deals" combined view), recent
-   months can be distorted because some locations have not yet reported. Find the
-   most recent month for which EVERY location group has complete data — i.e. the
-   minimum, across all deal@@location groups, of each group's latest complete
-   month (current in-progress month and trailing-partial months excluded). The
-   YoY tab then caps its window at this month so the combined picture only ever
-   reflects months all locations have reported. Fully dynamic as new data lands. */
-function combinedCompleteEndKey(rows) {
-  const groups = groupByDealLoc(rows);
-  let minEnd = null;
-  for (const dl in groups) {
-    const monthly = trimTrailingPartial(aggregateMonthly(groups[dl]))
-                      .filter(m => m.key < CURRENT_MONTH_KEY);
-    if (!monthly.length) continue;
-    const endKey = monthly[monthly.length - 1].key;   // aggregateMonthly is sorted ascending
-    if (minEnd === null || endKey < minEnd) minEnd = endKey;
-  }
-  return minEnd;
-}
-
 function renderYoY(monthly) {
-  // Individual deal → use the series as-is. Combined (multi-deal) → cap the window
-  // at the latest month all locations have reported, so incomplete recent months
-  // don't distort the combined view.
-  let series = monthly;
-  const dealsInScope = [...new Set(filteredData.map(r => r.deal))];
-  if (dealsInScope.length > 1) {
-    const endKey = combinedCompleteEndKey(filteredData);
-    if (endKey) series = monthly.filter(m => m.key <= endKey);
-  }
-
-  const yoy12   = calcYoY(series, 12);
-  const yoyFull = calcYoYFull(series);
+  const yoy12   = calcYoY(monthly, 12);
+  const yoyFull = calcYoYFull(monthly);
   // Growth signal = trailing 12 months that actually have a prior-year comparison
   // (yoyFull is newest-first, so take the first 12 and flip to chronological).
   const growth12 = yoyFull.slice(0, 12).reverse();
   renderYoYGrowthChart(growth12);
-  renderYoYVintageChart(series);
+  renderYoYVintageChart(monthly);
 
   // helper: render a % badge
   function yoyPctBadge(pct) {
