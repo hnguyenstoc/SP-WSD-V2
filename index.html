@@ -5,6 +5,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SPUSA | Pipeline Sales Dashboard</title>
+<link rel="icon" href="https://raw.githubusercontent.com/skulkar8-debug/-stoc-advisory-spusa-locations/main/spusa-logo-small.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -108,6 +109,19 @@ body {
 }
 .auth-btn:hover { background: var(--navy-lt); }
 .auth-error { color: var(--red); font-size: 12px; margin-top: 12px; display: none; }
+.auth-field { position: relative; }
+.auth-field .auth-input { padding-right: 40px; }
+.auth-eye {
+  position: absolute; right: 5px; top: 50%; transform: translateY(-50%);
+  width: 30px; height: 30px; border: 0; background: transparent; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  color: #9098a6; border-radius: 5px;
+}
+.auth-eye:hover { color: #3a4252; background: #f0f2f6; }
+.auth-eye svg { width: 17px; height: 17px; display: block; }
+.auth-notice { margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--border); }
+.auth-notice p { font-size: 11px; line-height: 1.6; color: var(--text2); margin: 0; }
+.auth-foot { margin-top: 14px; font-size: 10.5px; color: #9aa3b5; letter-spacing: 0.02em; }
 
 /* ── HEADER ──────────────────────────────────────────────── */
 .header {
@@ -350,6 +364,30 @@ input[type="date"]:focus { outline: none; border-color: var(--navy); }
 }
 .sec-rule { flex: 1; height: 1px; background: var(--border); }
 
+/* ── ZOOM CONTROLS (Trends / YoY charts) ─────────────────── */
+.zoom-controls { display: flex; align-items: center; gap: 3px; flex-shrink: 0; }
+.zoom-btn {
+  width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;
+  border: 1.5px solid var(--border2); background: var(--surface); color: var(--navy);
+  border-radius: var(--radius-sm); cursor: pointer; font-size: 14px; font-weight: 700;
+  line-height: 1; transition: all 0.15s; user-select: none;
+}
+.zoom-btn:hover { background: var(--surface2); border-color: var(--navy); }
+.zoom-btn:disabled { opacity: 0.35; cursor: default; }
+.zoom-btn:disabled:hover { background: var(--surface); border-color: var(--border2); }
+.zoom-pct {
+  font-size: 10px; font-weight: 700; color: var(--text3); width: 36px;
+  text-align: center; letter-spacing: 0.2px; white-space: nowrap;
+}
+.zoom-fit {
+  font-size: 10px; font-weight: 700; color: var(--navy); cursor: pointer;
+  padding: 3px 9px; border-radius: var(--radius-sm); border: 1.5px solid var(--border2);
+  background: var(--surface); text-transform: uppercase; letter-spacing: 0.4px;
+  margin-left: 4px; transition: all 0.15s;
+}
+.zoom-fit:hover { background: var(--surface2); border-color: var(--navy); }
+.chart-wrap { transition: height 0.18s ease; }
+
 /* ── ALERT / WARNING BANNER ──────────────────────────────── */
 .alert {
   display: flex; align-items: flex-start; gap: 10px;
@@ -536,14 +574,29 @@ table.dt td.neg   { color: var(--red);   font-weight: 600; }
   font-family: 'Inter', -apple-system, sans-serif;
   font-weight: 700; font-size: 11px; letter-spacing: 0.3px; white-space: nowrap;
 }
-.rev-badge.out     { background: var(--green);          color: #FFFFFF;      }  /* Outperforming */
-.rev-badge.aligned { background: rgba(27,110,69,0.12);  color: #3C8B63;      }  /* Aligned (neutral green) */
+.rev-badge.out     { background: var(--green);          color: #FFFFFF;      }  /* Outperform */
+.rev-badge.aligned { background: rgba(27,110,69,0.12);  color: #3C8B63;      }  /* legacy */
+.rev-badge.neutral { background: var(--surface3);       color: var(--text2); }  /* Stable */
 .rev-badge.watch   { background: var(--amber-lt);       color: var(--amber); }  /* Watch */
-.rev-badge.under   { background: var(--red-lt);         color: var(--red);   }  /* Underperforming */
+.rev-badge.under   { background: var(--red-lt);         color: var(--red);   }  /* Hold */
 /* Pull Stage / Status pill text flush under the column header label
    (cancels the pill's own left padding so the label and pill text share a left edge) */
 .deal-sum-tbl td.l > .stage-badge,
 .deal-sum-tbl td.l > .rev-badge { margin-left: -10px; }
+
+/* ── RAG LEGEND (Adj. Revenue / Run-Rate status) ──────────── */
+.status-legend {
+  display: flex; flex-wrap: wrap; gap: 14px 20px;
+  margin-top: 12px; padding: 9px 14px;
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); font-size: 10.5px; color: var(--text2);
+}
+.status-legend-item { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.status-dot.out     { background: var(--green); }
+.status-dot.neutral { background: var(--text3); }
+.status-dot.watch   { background: var(--amber); }
+.status-dot.under   { background: var(--red);   }
 .partial-tag {
   display: inline-flex; align-items: center; gap: 3px;
   padding: 1px 5px; border-radius: 3px;
@@ -640,9 +693,20 @@ table.dt td.neg   { color: var(--red);   font-weight: 600; }
     </div>
     <div class="auth-title">Pipeline Sales Dashboard</div>
     <div class="auth-sub">Enter the access password to continue</div>
-    <input id="authInput" class="auth-input" type="password" placeholder="Password" autocomplete="off">
+    <div class="auth-field">
+      <input id="authInput" class="auth-input" type="password" placeholder="Password" autocomplete="off">
+      <button type="button" id="authEye" class="auth-eye" aria-label="Show password" title="Show password">
+        <svg id="authEyeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>
+        </svg>
+      </button>
+    </div>
     <button class="auth-btn" onclick="tryAuth()">Unlock</button>
     <div id="authError" class="auth-error">Incorrect password — please try again.</div>
+    <div class="auth-notice">
+      <p>Access is restricted to authorized individuals only. If this link was not shared directly with you, close this page now. Unauthorized access, viewing, or distribution is prohibited and may result in legal action.</p>
+    </div>
+    <div class="auth-foot">© STOC Advisory</div>
   </div>
 </div>
 
@@ -796,6 +860,12 @@ table.dt td.neg   { color: var(--red);   font-weight: 600; }
           <div class="cmp-sub">vs. LOI baseline</div>
         </div>
       </div>
+      <div class="status-legend">
+        <span class="status-legend-item"><span class="status-dot out"></span>Outperform ≥ +3%</span>
+        <span class="status-legend-item"><span class="status-dot neutral"></span>Stable −1% to +3%</span>
+        <span class="status-legend-item"><span class="status-dot watch"></span>Watch −3% to −1%</span>
+        <span class="status-legend-item"><span class="status-dot under"></span>Hold ≤ −3%</span>
+      </div>
       <div class="chart-title" style="margin-bottom:12px;">Rolling TTM Trend</div>
       <div class="chart-wrap"><canvas id="ttmTrendChart" height="170"></canvas></div>
     </div>
@@ -823,6 +893,12 @@ table.dt td.neg   { color: var(--red);   font-weight: 600; }
           <div class="cmp-value"><span id="rrStatus" class="rev-badge" style="font-size:14px;padding:5px 14px">—</span></div>
           <div class="cmp-sub">&nbsp;</div>
         </div>
+      </div>
+      <div class="status-legend">
+        <span class="status-legend-item"><span class="status-dot out"></span>Outperform ≥ +3%</span>
+        <span class="status-legend-item"><span class="status-dot neutral"></span>Stable −1% to +3%</span>
+        <span class="status-legend-item"><span class="status-dot watch"></span>Watch −3% to −1%</span>
+        <span class="status-legend-item"><span class="status-dot under"></span>Hold ≤ −3%</span>
       </div>
       <div class="rr-bridge" id="rrBridge"></div>
     </div>
@@ -874,6 +950,12 @@ table.dt td.neg   { color: var(--red);   font-weight: 600; }
     <div class="sec-head">
       <span class="sec-title" id="trendLabel">Monthly Trend</span>
       <span class="sec-rule"></span>
+      <div class="zoom-controls">
+        <button class="zoom-btn" id="trends-zoom-out" onclick="zoomChange('trends',-1)" title="Zoom out">−</button>
+        <span class="zoom-pct" id="trends-zoom-pct">100%</span>
+        <button class="zoom-btn" id="trends-zoom-in" onclick="zoomChange('trends',1)" title="Zoom in">+</button>
+        <span class="zoom-fit" onclick="zoomFit('trends')" title="Shrink both charts to fit in view">Fit Both</span>
+      </div>
     </div>
     <div class="chart-row" style="margin-bottom:16px">
       <div class="chart-card full">
@@ -891,7 +973,14 @@ table.dt td.neg   { color: var(--red);   font-weight: 600; }
        TAB: YOY ANALYSIS
        ════════════════════════════════════════════ -->
   <div id="tab-yoy" class="tab-panel">
-    <div class="sec-head"><span class="sec-title">Year-over-Year Analysis · Trailing 12 Months</span><span class="sec-rule"></span></div>
+    <div class="sec-head"><span class="sec-title">Year-over-Year Analysis · Trailing 12 Months</span><span class="sec-rule"></span>
+      <div class="zoom-controls">
+        <button class="zoom-btn" id="yoy-zoom-out" onclick="zoomChange('yoy',-1)" title="Zoom out">−</button>
+        <span class="zoom-pct" id="yoy-zoom-pct">100%</span>
+        <button class="zoom-btn" id="yoy-zoom-in" onclick="zoomChange('yoy',1)" title="Zoom in">+</button>
+        <span class="zoom-fit" onclick="zoomFit('yoy')" title="Shrink both charts to fit in view">Fit Both</span>
+      </div>
+    </div>
 
     <div class="chart-card full" style="margin-bottom:16px">
       <div class="chart-title">YoY Growth % — the signal view</div>
@@ -1393,7 +1482,59 @@ function switchTab(id) {
     tg.title = isYoy ? 'YoY Analysis always uses monthly data' : '';
   }
   // Trigger chart resize after tab switch (Chart.js needs this on hidden canvases)
+  if (id === 'trends' || id === 'yoy') applyZoom(id);
   setTimeout(() => Object.values(charts).forEach(c => c?.resize?.()), 50);
+}
+
+/* ════════════════════════════════════════════════════════════
+   ZOOM CONTROLS  ·  Trends & YoY Analysis tabs
+   ────────────────────────────────────────────────────────────
+   Each chart's CSS height is scaled by a zoom factor. "Fit Both" jumps
+   to the smallest level so both charts in the tab are visible without
+   scrolling — telling the big-picture story at a glance. Zooming in
+   enlarges the charts for detail (may require scrolling).
+   ════════════════════════════════════════════════════════════ */
+const ZOOM_LEVELS = [0.5, 0.65, 0.8, 1, 1.25, 1.5, 1.75, 2];
+const ZOOM_DEFAULT_IDX = 3;             // 1.0×
+const ZOOM_FIT_IDX      = 0;            // smallest — both charts fit in view
+const zoomState = { trends: ZOOM_DEFAULT_IDX, yoy: ZOOM_DEFAULT_IDX };
+
+/* canvasId → its natural (1.0×) pixel height, taken from the height="" attr */
+const ZOOM_TARGETS = {
+  trends: [{ id: 'mainChart', base: 260 }, { id: 'ttmTrendChart2', base: 220 }],
+  yoy:    [{ id: 'yoyGrowthChart', base: 240 }, { id: 'yoyVintageChart', base: 260 }],
+};
+
+function applyZoom(tab) {
+  const idx = zoomState[tab];
+  const lvl = ZOOM_LEVELS[idx];
+  (ZOOM_TARGETS[tab] || []).forEach(({ id, base }) => {
+    const canvas = document.getElementById(id);
+    const wrap   = canvas && canvas.closest('.chart-wrap');
+    if (!wrap) return;
+    wrap.style.height = Math.round(base * lvl) + 'px';
+  });
+  const pctEl = document.getElementById(`${tab}-zoom-pct`);
+  if (pctEl) pctEl.textContent = Math.round(lvl * 100) + '%';
+  const outBtn = document.getElementById(`${tab}-zoom-out`);
+  const inBtn  = document.getElementById(`${tab}-zoom-in`);
+  if (outBtn) outBtn.disabled = idx === 0;
+  if (inBtn)  inBtn.disabled  = idx === ZOOM_LEVELS.length - 1;
+  // Chart.js needs an explicit resize once the container's new height has
+  // actually been laid out by the browser.
+  requestAnimationFrame(() => setTimeout(() => Object.values(charts).forEach(c => c?.resize?.()), 30));
+}
+
+function zoomChange(tab, dir) {
+  const next = zoomState[tab] + dir;
+  if (next < 0 || next >= ZOOM_LEVELS.length) return;
+  zoomState[tab] = next;
+  applyZoom(tab);
+}
+
+function zoomFit(tab) {
+  zoomState[tab] = ZOOM_FIT_IDX;
+  applyZoom(tab);
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -1477,6 +1618,46 @@ function trimTrailingPartial(sorted) {
   return arr;
 }
 
+/* ─────────────────────────────────────────────────────────────
+   COMBINED (ALL-DEALS) YOY TRIM
+   ─────────────────────────────────────────────────────────────
+   At the all-deals-combined level, a calendar month's combined total is
+   the sum across every deal in scope. If even one deal simply hasn't
+   reported a given recent month yet (data lag), that month's combined
+   total silently understates — it gets treated like a real decline
+   rather than a missing-data gap. This trims trailing months off a
+   combined monthly series until every in-scope deal has at least one
+   record in the remaining final month, so YoY only ever compares
+   months that are genuinely complete across the whole portfolio.
+
+   Only applied at the combined (multiple-deals) level — individual deal
+   views are left exactly as-is, since `trimTrailingPartial` already
+   handles single-deal partial-month trimming. Self-adjusting: as new
+   data lands for a lagging deal, the window automatically extends. */
+function trimTrailingIncompleteDeals(monthly, rows) {
+  const deals = [...new Set(rows.map(r => r.deal).filter(Boolean))];
+  if (deals.length <= 1) return monthly;      // nothing to reconcile across
+
+  // For each deal, compute the set of months IT considers complete (same
+  // day-count-vs-median logic as trimTrailingPartial) — not just "has any
+  // row that month", since a deal can have a partial trailing month (e.g.
+  // a handful of days into March) that shouldn't count as "reported".
+  const dealCompleteKeys = {};
+  deals.forEach(dl => {
+    const dealMonthly = trimTrailingPartial(aggregateMonthly(rows.filter(r => r.deal === dl)));
+    dealCompleteKeys[dl] = new Set(dealMonthly.map(m => m.key));
+  });
+
+  let arr = [...monthly].sort((a,b) => a.key.localeCompare(b.key));
+  while (arr.length > 1) {
+    const last = arr[arr.length - 1];
+    const allComplete = deals.every(dl => dealCompleteKeys[dl].has(last.key));
+    if (!allComplete) arr = arr.slice(0, -1);   // drop & re-test the new last month
+    else break;
+  }
+  return arr;
+}
+
 /* Drop incomplete trailing weeks (current week-in-progress or short final weeks)
    so weekly comparisons only ever use complete weeks. A week is "short" if its
    distinct working-day count is well below the scope's typical full week. */
@@ -1512,25 +1693,25 @@ function calcTTM(monthly) {
 
 /* Classify current TTM revenue against the LOI baseline.
    varP = (TTM − LOI) / LOI:
-     ≥ +2%             → Outperforming
-     0% to <+2%        → Aligned
-     <0% to ≥ −2%      → Watch
-     < −2%             → Underperforming
+     ≥ +3%             → Outperform (green)
+     −1% to <+3%       → Stable (neutral)
+     −3% to <−1%       → Watch (amber)
+     ≤ −3%             → Hold (red)
    Returns null when TTM or a positive LOI isn't available. */
 function revenueStatus(ttm, loi) {
   if (ttm == null || loi == null || !(loi > 0)) return null;
   const v = (ttm - loi) / loi;
-  if (v >=  0.02) return { label: 'Outperforming',   cls: 'out'     };  // ≥ +2%
-  if (v >=  0)    return { label: 'Aligned',         cls: 'aligned' };  // 0% to <+2%
-  if (v >= -0.02) return { label: 'Watch',           cls: 'watch'   };  // <0% to ≥ −2%
-  return            { label: 'Underperforming',  cls: 'under'   };       // < −2%
+  if (v >=  0.03) return { label: 'Outperform', cls: 'out'     };  // ≥ +3%
+  if (v >  -0.01) return { label: 'Stable',     cls: 'neutral' };  // -1% to <+3%
+  if (v >  -0.03) return { label: 'Watch',      cls: 'watch'   };  // -3% to <-1%
+  return            { label: 'Hold',        cls: 'under'   };      // ≤ -3%
 }
 
 /* Colors matching the .rev-badge palette, keyed by status class. Used so the
    $ Variance / % Variance figures take the same color as the Revenue Status badge. */
 const STATUS_COLOR = {
   out:     'var(--green)',
-  aligned: '#3C8B63',
+  neutral: 'var(--text2)',
   watch:   'var(--amber)',
   under:   'var(--red)',
 };
@@ -2363,24 +2544,18 @@ function logProviderDetection() {
 /* ════════════════════════════════════════════════════════════
    FORWARD RUN-RATE vs LOI
    ════════════════════════════════════════════════════════════ */
-/* Annualized run-rate status bands (Current Annualized Run-Rate vs LOI):
-     > 0%          → Outperforming  (green)
-     −1% to 0%     → Aligned        (amber)
-     < −1%         → Underperforming (red) */
+/* Annualized run-rate status bands (Current Annualized Run-Rate vs LOI) —
+   same RAG rule as the Adj. Revenue status (revenueStatus):
+     ≥ +3%         → Outperform (green)
+     −1% to <+3%   → Stable (neutral)
+     −3% to <−1%   → Watch (amber)
+     ≤ −3%         → Hold (red) */
 function runRateBand(varP) {
   if (varP == null) return null;
-  if (varP > 0)      return { cls: 'out',   color: 'var(--green)', up: true,  status: 'Outperforming'   };
-  if (varP >= -0.01) return { cls: 'watch', color: 'var(--amber)', up: false, status: 'Aligned'         };
-  return                    { cls: 'under', color: 'var(--red)',   up: false, status: 'Underperforming' };
-}
-
-/* Stock-market style trend arrow (zig-zag line + arrowhead), colored via `color`. */
-function trendArrowSvg(up, color) {
-  const line = up ? '22 7 13.5 15.5 8.5 10.5 2 17' : '22 17 13.5 8.5 8.5 13.5 2 7';
-  const head = up ? '16 7 22 7 22 13'               : '16 17 22 17 22 11';
-  return `<svg class="rr-arrow-ico" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2.4" `
-       + `stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">`
-       + `<polyline points="${line}"/><polyline points="${head}"/></svg>`;
+  if (varP >=  0.03) return { cls: 'out',     color: 'var(--green)', status: 'Outperform' };
+  if (varP >  -0.01) return { cls: 'neutral', color: 'var(--text2)', status: 'Stable'      };
+  if (varP >  -0.03) return { cls: 'watch',   color: 'var(--amber)', status: 'Watch'        };
+  return                    { cls: 'under',   color: 'var(--red)',   status: 'Hold'         };
 }
 
 function renderRunRate() {
@@ -2436,9 +2611,8 @@ function renderRunRate() {
     const varP = (annualized - loiTotal) / loiTotal;
     const band = runRateBand(varP);
     const pct  = Math.round(Math.abs(varP) * 100);
-    setH('rrVar',
-      `<span class="rr-var" style="color:${band.color}">` +
-      `${trendArrowSvg(band.up, band.color)}<span>${pct}%</span></span>`);
+    const sign = varP >= 0 ? '+' : '−';
+    setH('rrVar', `<span class="rr-var" style="color:${band.color}">${sign}${pct}%</span>`);
     setStatus(band.status, band.cls);
   } else {
     set('rrVar', '—'); setS('rrVar', 'color', '');
@@ -2525,13 +2699,21 @@ function renderTTMvsLOI(monthly) {
 }
 
 function renderYoY(monthly) {
-  const yoy12   = calcYoY(monthly, 12);
-  const yoyFull = calcYoYFull(monthly);
+  // At the combined (all-deals / multi-deal) level, reconcile trailing months
+  // so a location that simply hasn't reported yet doesn't masquerade as a
+  // revenue decline. Individual deal-level views are left untouched.
+  const dealsInScope = [...new Set(filteredData.map(r => r.deal))];
+  const yoyMonthly = dealsInScope.length > 1
+    ? trimTrailingIncompleteDeals(monthly, filteredData)
+    : monthly;
+
+  const yoy12   = calcYoY(yoyMonthly, 12);
+  const yoyFull = calcYoYFull(yoyMonthly);
   // Growth signal = trailing 12 months that actually have a prior-year comparison
   // (yoyFull is newest-first, so take the first 12 and flip to chronological).
   const growth12 = yoyFull.slice(0, 12).reverse();
   renderYoYGrowthChart(growth12);
-  renderYoYVintageChart(monthly);
+  renderYoYVintageChart(yoyMonthly);
 
   // helper: render a % badge
   function yoyPctBadge(pct) {
@@ -3153,6 +3335,26 @@ function bootAuth() {
   }
 }
 
+(function () {
+  var eye = document.getElementById('authEye');
+  var icon = document.getElementById('authEyeIcon');
+  var inp = document.getElementById('authInput');
+  if (!eye || !inp) return;
+  var EYE = '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>';
+  var EYEOFF = '<path d="M9.9 4.2A10.9 10.9 0 0 1 12 4c6.5 0 10 7 10 7a18 18 0 0 1-3.2 4M6.6 6.6A18 18 0 0 0 2 11s3.5 7 10 7a10.9 10.9 0 0 0 4.2-.8"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/><path d="M2 2l20 20"/>';
+  var shown = false;
+  eye.addEventListener('click', function () {
+    shown = !shown;
+    inp.type = shown ? 'text' : 'password';
+    icon.innerHTML = shown ? EYEOFF : EYE;
+    eye.setAttribute('aria-label', shown ? 'Hide password' : 'Show password');
+    eye.title = shown ? 'Hide password' : 'Show password';
+    inp.focus();
+  });
+})();
+
+applyZoom('trends');
+applyZoom('yoy');
 bootAuth();
 </script>
 </body>
