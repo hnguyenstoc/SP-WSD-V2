@@ -776,9 +776,9 @@ table.dt td.neg   { color: var(--red);   font-weight: 600; }
           <div class="cmp-sub" id="cmpTTMPeriod">Most recent 12 months</div>
         </div>
         <div class="cmp-card">
-          <div class="cmp-label">LOI Adj. Revenue</div>
+          <div class="cmp-label">LOI Revenue</div>
           <div class="cmp-value" id="cmpLOI" style="color:var(--navy)">—</div>
-          <div class="cmp-sub">From LOI Config tab (editable)</div>
+          <div class="cmp-sub">&nbsp;</div>
         </div>
         <div class="cmp-card">
           <div class="cmp-label">$ Variance (TTM − LOI)</div>
@@ -806,7 +806,7 @@ table.dt td.neg   { color: var(--red);   font-weight: 600; }
         <div class="cmp-card">
           <div class="cmp-label">LOI Baseline</div>
           <div class="cmp-value" id="rrLOI" style="color:var(--navy)">—</div>
-          <div class="cmp-sub">Annual LOI Adj. Revenue</div>
+          <div class="cmp-sub">Annual LOI Revenue</div>
         </div>
         <div class="cmp-card">
           <div class="cmp-label">Current Annualized Run-Rate</div>
@@ -842,7 +842,7 @@ table.dt td.neg   { color: var(--red);   font-weight: 600; }
       <div class="kpi-card amber" data-op>
         <div class="kpi-label">Adj. Collection Rate</div>
         <div class="kpi-value" id="kpiAdjCollRate">—</div>
-        <div class="kpi-sub">Realization rate<span class="rag-chip" id="ragRate"></span></div>
+        <div class="kpi-sub" id="kpiAdjCollRatePeriod">Realization · trailing 12 months<span class="rag-chip" id="ragRate"></span></div>
       </div>
       <div class="kpi-card blue" data-op>
         <div class="kpi-label">Avg. Daily Production by Provider</div>
@@ -878,13 +878,11 @@ table.dt td.neg   { color: var(--red);   font-weight: 600; }
     <div class="chart-row" style="margin-bottom:16px">
       <div class="chart-card full">
         <div class="chart-title" id="mainChartTitle">Monthly Revenue</div>
-        <div class="chart-sub" id="mainChartSub">Bars = Production · Line = Revenue</div>
         <div class="chart-wrap"><canvas id="mainChart" height="260"></canvas></div>
       </div>
     </div>
     <div class="chart-card full">
       <div class="chart-title">Rolling TTM Adj. Revenue</div>
-      <div class="chart-sub">Rolling 12-month Adj. Revenue · dashed line = LOI target</div>
       <div class="chart-wrap"><canvas id="ttmTrendChart2" height="220"></canvas></div>
     </div>
   </div><!-- /tab-trends -->
@@ -897,13 +895,11 @@ table.dt td.neg   { color: var(--red);   font-weight: 600; }
 
     <div class="chart-card full" style="margin-bottom:16px">
       <div class="chart-title">YoY Growth % — the signal view</div>
-      <div class="chart-sub">Adj. Revenue vs. same calendar month one year prior · green = growth, red = decline · trailing 12 months</div>
       <div class="chart-wrap"><canvas id="yoyGrowthChart" height="240"></canvas></div>
     </div>
 
     <div class="chart-card full" style="margin-bottom:20px">
       <div class="chart-title">Adj. Revenue by Vintage</div>
-      <div class="chart-sub">Same calendar month compared across vintages (acquisition years) — gaps between vintages flag revenue leakage</div>
       <div class="chart-wrap"><canvas id="yoyVintageChart" height="260"></canvas></div>
     </div>
 
@@ -1373,7 +1369,6 @@ function setView(v) {
   const lbl = v === 'monthly' ? 'Monthly' : 'Weekly';
   document.getElementById('trendLabel').textContent     = lbl + ' Trend';
   document.getElementById('mainChartTitle').textContent = lbl + ' Adj. Revenue';
-  document.getElementById('mainChartSub').textContent   = `Bars = Gross Production · Line = Adj. Revenue — aggregated by ${v.toLowerCase()} period`;
   document.getElementById('perfTableSectionLabel').textContent = lbl + ' Performance Detail';
   document.getElementById('perfTableTitle').textContent = lbl + ' Summary';
   const locSub = document.getElementById('locTableSub');
@@ -2060,7 +2055,7 @@ function renderYoYGrowthChart(rows) {
       ctx.textAlign = 'center';
       meta.data.forEach((bar, i) => {
         const v = vals[i];
-        ctx.fillStyle = v >= 0 ? '#1B6E45' : '#C0392B';
+        ctx.fillStyle = v >= 0 ? '#1B3564' : '#C0392B';
         ctx.textBaseline = v >= 0 ? 'bottom' : 'top';
         const offset = v >= 0 ? -5 : 5;
         ctx.fillText(`${v >= 0 ? '+' : ''}${v.toFixed(1)}%`, bar.x, bar.y + offset);
@@ -2076,8 +2071,8 @@ function renderYoYGrowthChart(rows) {
       datasets: [{
         label: 'YoY Growth %',
         data: vals,
-        backgroundColor: vals.map(v => v >= 0 ? 'rgba(27,110,69,0.80)' : 'rgba(192,57,43,0.82)'),
-        borderColor:     vals.map(v => v >= 0 ? '#1B6E45' : '#C0392B'),
+        backgroundColor: vals.map(v => v >= 0 ? 'rgba(27,53,100,0.85)' : 'rgba(192,57,43,0.85)'),
+        borderColor:     vals.map(v => v >= 0 ? '#1B3564' : '#C0392B'),
         borderWidth: 1,
         borderRadius: 3,
       }],
@@ -2167,8 +2162,6 @@ const setS  = (id, p, v)    => { const e = document.getElementById(id); if (e) e
 
 function renderKPIs(monthly) {
   const d = filteredData;
-  const tC   = d.reduce((s,r) => s + r.chargeAmount,   0);
-  const tAdj = d.reduce((s,r) => s + r.adjCollections, 0);
   const locs = [...new Set(d.map(r=>r.location).filter(Boolean))];
   // TTM headline = per-location trailing-12 complete months rolled up (each
   // location anchored to its own latest complete month).
@@ -2179,8 +2172,12 @@ function renderKPIs(monthly) {
   const dates = d.filter(r=>r.date).map(r=>r.date.getTime());
   const latest = dates.length ? new Date(Math.max(...dates)) : null;
 
-  // Adjusted collection rate (realization) = collections ÷ gross production
-  const adjRate = tC > 0 ? tAdj / tC : null;
+  // Adjusted collection rate (realization) = TTM Adj. Revenue ÷ TTM Gross
+  // Production, both on the same per-location trailing-12-complete-month roll-up
+  // as the two TTM tiles beside it — NOT the selected-period totals.
+  const adjRate = (ttmRes && ttmProdRes && ttmProdRes.amount > 0)
+    ? ttmRes.amount / ttmProdRes.amount
+    : null;
 
   // Production per provider-day on QUALIFYING days only (day's gross production
   // must exceed half the median daily gross production — threshold is per-scope).
