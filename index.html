@@ -2418,7 +2418,7 @@ function renderKPIs(monthly) {
   set('kpiTTMProd',    ttmProdRes ? fmtM(ttmProdRes.amount, true) : '—');
   set('kpiTTMProdPeriod', ttmPeriodText(ttmProdRes));
   set('kpiAdjCollRate', adjRate != null ? (adjRate*100).toFixed(1) + '%' : '—');
-  set('kpiProvDay',    adr.value != null ? fmtM(adr.value, true) : '—');
+  set('kpiProvDay',    adr.value != null ? fmtM(adr.value) : '—');
   set('kpiLocations',  locs.length);
   set('kpiLatestDate', latest ? latest.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—');
 
