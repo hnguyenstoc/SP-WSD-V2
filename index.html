@@ -1875,6 +1875,14 @@ function ttmPeriodText(ttmRes) {
            / (weighted blend of whole prior calendar-year totals)
      Annualized Run-Rate = current L13W revenue / x%
 
+   The prior-year window is built by anchoring on the prior-year counterpart
+   of the CURRENT window's most recent week, then walking backward through
+   that location's actual weekly history by POSITION (not by week-number) to
+   collect N weeks. A single missing/gap week (a week that simply has no
+   data, vs. a true $0 week) is skipped this way — the next week back fills
+   in — rather than voiding the whole seasonal calc for that location. We
+   never substitute $0 for a missing week, which would understate revenue.
+
    The denominator is a WEIGHTED BLEND of full prior calendar-year totals,
    weighted by how many of the 13 matched prior-year weeks fall in each
    calendar year. Most windows match entirely into one prior year (100%
@@ -1905,12 +1913,25 @@ function calcRunRateByLocation(rows, nWeeks = 13) {
     const win = weeks.slice(-N);
     const currSum = win.reduce((s, w) => s + w.adjCollections, 0);
 
-    // Look up the SAME week-of-year window one year earlier, plus that
-    // prior year's full-year total, to derive the seasonal share x%.
-    const priorByKey = {};
-    allWeeks.forEach(w => { priorByKey[w.key] = w; });
-    const priorWeeks = win.map(w => priorByKey[`${w.year - 1}-${String(w.week).padStart(2, '0')}`]);
-    const havePriorWindow = priorWeeks.every(Boolean);
+    // Look up the SAME week-of-year window one year earlier. Rather than
+    // requiring an EXACT week-number match for all N weeks (which voids the
+    // whole seasonal calc if even one prior-year week is simply missing from
+    // the data — e.g. a skipped reporting week), anchor on the prior-year
+    // counterpart of the window's MOST RECENT week, then walk backward
+    // through that location's actual weekly history (by position, not by
+    // week-number) collecting N weeks. A missing/gap week is naturally
+    // skipped this way — the next week back fills in — so a single gap no
+    // longer disqualifies the location from the seasonal method. We never
+    // substitute a $0 for a missing week (that would understate revenue);
+    // we simply reach one week further back for a real data point.
+    const anchorPriorKey = `${win[N - 1].year - 1}-${String(win[N - 1].week).padStart(2, '0')}`;
+    const anchorIdx = allWeeks.findIndex(w => w.key === anchorPriorKey);
+    let priorWeeks = null;
+    if (anchorIdx >= 0) {
+      const startIdx = anchorIdx - (N - 1);
+      if (startIdx >= 0) priorWeeks = allWeeks.slice(startIdx, anchorIdx + 1);
+    }
+    const havePriorWindow = priorWeeks != null && priorWeeks.length === N;
 
     let ann = null;
     if (havePriorWindow) {
