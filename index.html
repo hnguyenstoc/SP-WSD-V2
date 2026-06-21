@@ -1740,32 +1740,47 @@ function calcRollingTTM(monthly) {
    INACTIVE-LOCATION DETECTION
    ════════════════════════════════════════════════════════════
    A location is "inactive" if it has simply stopped reporting while the
-   rest of the portfolio keeps going — e.g. Midway's last data point is
-   from Oct 2024 while its peers are reporting through mid-2026. Left
+   rest of ITS OWN DEAL keeps going — e.g. Midway's last data point is from
+   Oct 2024 while its Lakeview-deal peers report through mid-2026. Left
    unfiltered, a frozen location keeps contributing a stale, misleading
    figure to every rollup (TTM, Run-Rate, location counts) indefinitely.
 
-   Detection is RELATIVE, not wall-clock-based: a location is flagged
-   inactive if the gap between its own last reported date and the
-   PORTFOLIO'S reporting frontier (the most recent date seen anywhere in
-   the in-scope data) exceeds INACTIVE_GAP_DAYS. Anchoring on the
-   portfolio's own frontier — not `new Date()` — means this stays correct
-   even if the whole dataset itself lags behind real time (e.g. nightly
-   feeds that are a few days old), and self-adjusts as new data lands:
-   a location that resumes reporting is automatically reclassified active
-   on the next render, no manual list to maintain. */
+   Detection is RELATIVE, not wall-clock-based — and crucially, the
+   "frontier" it's measured against is computed PER DEAL, not across the
+   whole portfolio. Different deals report on different cadences/lags
+   entirely independent of any one location's health (e.g. Kreit's feed
+   currently lags ~3 months behind Forest Dental's). Using a single
+   portfolio-wide frontier would flag an entire on-time deal as "inactive"
+   just because some other, faster-reporting deal happens to be more
+   current — exactly the bug this fixes. Each deal's locations are judged
+   only against that SAME deal's own most recent reported date.
+
+   Anchoring on each deal's own frontier — not `new Date()` — means this
+   stays correct even when a deal's whole feed lags behind real time, and
+   self-adjusts as new data lands: a location that resumes reporting is
+   automatically reclassified active on the next render, no manual list to
+   maintain. */
 const INACTIVE_GAP_DAYS = 90;
 
-/* Returns { inactiveSet, activeSet, frontier, gaps } where inactiveSet /
-   activeSet are Sets of "deal@@location" keys. `rows` should be scoped to
-   active deals (and ANY deal/location filter you want the frontier itself
-   to respect) but should NOT be date-range filtered — staleness detection
-   needs the true most-recent data, not whatever window is currently shown. */
+/* Returns { inactiveSet, activeSet, frontiers, gaps } where inactiveSet /
+   activeSet are Sets of "deal@@location" keys, and frontiers is a map of
+   deal -> that deal's own most recent reported date. `rows` should be
+   scoped to active deals (and ANY deal/location filter you want the
+   frontier itself to respect) but should NOT be date-range filtered —
+   staleness detection needs the true most-recent data, not whatever
+   window is currently shown. */
 function detectInactiveLocations(rows, thresholdDays = INACTIVE_GAP_DAYS) {
   const dated = rows.filter(r => r.date);
-  if (!dated.length) return { inactiveSet: new Set(), activeSet: new Set(), frontier: null, gaps: {} };
+  if (!dated.length) return { inactiveSet: new Set(), activeSet: new Set(), frontiers: {}, gaps: {} };
 
-  const frontier = new Date(Math.max(...dated.map(r => r.date.getTime())));
+  // Each deal's own frontier = the most recent date reported ANYWHERE
+  // within that deal (across all its locations) — not the portfolio max.
+  const frontiers = {};
+  dated.forEach(r => {
+    const t = r.date.getTime();
+    if (!frontiers[r.deal] || t > frontiers[r.deal]) frontiers[r.deal] = t;
+  });
+
   const lastSeen = {};
   dated.forEach(r => {
     const dl = `${r.deal}@@${r.location || '(unspecified)'}`;
@@ -1775,11 +1790,12 @@ function detectInactiveLocations(rows, thresholdDays = INACTIVE_GAP_DAYS) {
 
   const inactiveSet = new Set(), activeSet = new Set(), gaps = {};
   for (const dl in lastSeen) {
-    const gapDays = (frontier.getTime() - lastSeen[dl]) / 86400000;
+    const deal = dl.split('@@')[0];
+    const gapDays = (frontiers[deal] - lastSeen[dl]) / 86400000;
     gaps[dl] = gapDays;
     (gapDays > thresholdDays ? inactiveSet : activeSet).add(dl);
   }
-  return { inactiveSet, activeSet, frontier, gaps };
+  return { inactiveSet, activeSet, frontiers, gaps };
 }
 
 /* Drop rows belonging to inactive deal@@location keys. */
