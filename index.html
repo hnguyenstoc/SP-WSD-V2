@@ -1860,11 +1860,19 @@ function calcRunRateByLocation(rows, nWeeks = 13) {
     let ann = null;
     if (havePriorWindow) {
       const priorWinSum = priorWeeks.reduce((s, w) => s + w.adjCollections, 0);
-      const priorYearsInWindow = new Set(priorWeeks.map(w => w.year));
-      const priorFullSum = allWeeks
-        .filter(w => priorYearsInWindow.has(w.year))
-        .reduce((s, w) => s + w.adjCollections, 0);
-      const x = priorFullSum > 0 ? priorWinSum / priorFullSum : null;
+      // "Prior full year" = a genuine trailing 52-WEEK window ending at the
+      // most recent matched prior-year week — NOT a sum of whole calendar
+      // years. Summing by calendar year breaks whenever the current L13W
+      // window straddles Dec→Jan: its prior-year counterpart then spans TWO
+      // calendar years, and summing "every week in either of those years"
+      // silently doubles the denominator (→ halves x% → doubles the
+      // annualized run-rate). Anchoring on a fixed 52-week trailing window
+      // sidesteps that regardless of where the window falls.
+      const anchorKey = priorWeeks[priorWeeks.length - 1].key;
+      const anchorIdx = allWeeks.findIndex(w => w.key === anchorKey);
+      const priorFullWin = anchorIdx >= 0 ? allWeeks.slice(Math.max(0, anchorIdx - 51), anchorIdx + 1) : [];
+      const priorFullSum = priorFullWin.reduce((s, w) => s + w.adjCollections, 0);
+      const x = (priorFullWin.length >= 52 && priorFullSum > 0) ? priorWinSum / priorFullSum : null;
       if (x && x > 0) { ann = currSum / x; anySeasonal = true; }
     }
     if (ann == null) { ann = (currSum / N) * 52; anyFallback = true; }
@@ -2507,39 +2515,28 @@ function applyTileRAG() {
 }
 
 /* ── Avg. Daily Adj. Rev ──────────────────────────────────────────────────
-   The tile answers "on an average working day, how much adjusted revenue
-   comes in?" It sums Adj. Collections across all in-scope locations for
-   each calendar date, then averages that daily total across all days that
-   had any activity. Daily-granularity rows only. */
+   The tile answers "on an average day, how much adjusted revenue comes in?"
+   It is the simple average of the Adj. Collections column across all
+   in-scope daily-granularity rows (one row = one location-day). */
 function avgDailyAdjRev(rows) {
-  const byDate = {};
-  rows.forEach(r => {
-    if (r.granularity !== 'daily' || !r.date) return;
-    const k = r.date.toDateString();
-    byDate[k] = (byDate[k] || 0) + r.adjCollections;
-  });
-  const vals = Object.values(byDate);
+  const vals = rows.filter(r => r.granularity === 'daily').map(r => r.adjCollections);
   if (!vals.length) return { value: null, n: 0 };
   const sum = vals.reduce((s, v) => s + v, 0);
   return { value: sum / vals.length, n: vals.length };
 }
 
 /* Per-month series of the average daily Adj. Rev, for the RAG chip —
-   each month = mean of that month's per-day adjusted-revenue totals. */
+   each month = mean of that month's Adj. Collections rows. */
 function monthlyAvgDailyAdjRevSeries(rows) {
   const byMonth = {};
   rows.forEach(r => {
-    if (r.granularity !== 'daily' || !r.year || !r.monthNum || !r.date) return;
+    if (r.granularity !== 'daily' || !r.year || !r.monthNum) return;
     const mk = `${r.year}-${String(r.monthNum).padStart(2,'0')}`;
-    const m = byMonth[mk] || (byMonth[mk] = { byDate: {} });
-    const dk = r.date.toDateString();
-    m.byDate[dk] = (m.byDate[dk] || 0) + r.adjCollections;
+    const m = byMonth[mk] || (byMonth[mk] = { sum: 0, n: 0 });
+    m.sum += r.adjCollections; m.n++;
   });
   return Object.keys(byMonth).sort()
-    .map(mk => {
-      const vals = Object.values(byMonth[mk].byDate);
-      return vals.length ? vals.reduce((s,v)=>s+v,0) / vals.length : null;
-    })
+    .map(mk => byMonth[mk].n ? byMonth[mk].sum / byMonth[mk].n : null)
     .filter(v => v != null);
 }
 
@@ -2551,7 +2548,7 @@ function logProviderDetection() {
     const rows = allData.filter(r => tabs.includes(r.deal));
     const adr = avgDailyAdjRev(rows);
     console.log('[Dashboard] Avg. Daily Adj. Rev:',
-      adr.n ? `${adr.n} day-observations across ${tabs.join(', ')} · avg ≈ $${Math.round(adr.value).toLocaleString()}.` : 'No daily-granularity rows found.');
+      adr.n ? `${adr.n} daily rows across ${tabs.join(', ')} · avg ≈ $${Math.round(adr.value).toLocaleString()}.` : 'No daily-granularity rows found.');
   } catch (e) { /* diagnostic only */ }
 }
 
@@ -2588,9 +2585,7 @@ function renderRunRate() {
   // stale location (data ends weeks ago) from dragging the combined window to 0.
   const rr = calcRunRateByLocation(rows, 13);
   const annualized = rr ? rr.annualized : null;
-  set('rrCurrentSub', rr && rr.anyFallback
-    ? 'L13W ÷ prior-year seasonal share (flat ×52 where no prior year)'
-    : 'L13W ÷ prior-year seasonal share (YoY-adjusted)');
+  set('rrCurrentSub', 'Annualize the most recent 13 complete weeks');
 
   // Portfolio TTM (per-location trailing-12 complete months) — identical scope
   // to the "Portfolio TTM vs LOI" block (filteredData), surfaced here as the
