@@ -927,7 +927,7 @@ table.dt td.neg   { color: var(--red);   font-weight: 600; }
       <div class="kpi-card gray">
         <div class="kpi-label">Active Locations</div>
         <div class="kpi-value" id="kpiLocations">—</div>
-        <div class="kpi-sub">In selected view</div>
+        <div class="kpi-sub" id="kpiLocationsSub">In selected view</div>
       </div>
       <div class="kpi-card gray">
         <div class="kpi-label">Latest Data Point</div>
@@ -1438,8 +1438,17 @@ function isFullDataMonth(r) {
 
 function onFilterChange() {
   const f = getFilters();
+
+  // Detect inactive locations off the ACTIVE-DEALS-scoped data, ignoring
+  // the date-range/location filters — staleness must be judged against the
+  // portfolio's true reporting frontier, not whatever window is shown.
+  const dealScoped = allData.filter(r => !window._activeDeals || window._activeDeals.has(r.deal));
+  const { inactiveSet } = detectInactiveLocations(dealScoped);
+  window._inactiveLocSet = inactiveSet;
+
   filteredData = allData.filter(r => {
     if (window._activeDeals && !window._activeDeals.has(r.deal)) return false;  // active deals only
+    if (inactiveSet.has(`${r.deal}@@${r.location || '(unspecified)'}`)) return false; // exclude stale locations
     if (f.deal && r.deal !== f.deal) return false;
     if (f.locs.size > 0 && !f.locs.has(r.location)) return false;
     if (f.start && r.date && r.date < new Date(f.start + 'T00:00:00')) return false;
@@ -1728,22 +1737,58 @@ function calcRollingTTM(monthly) {
 }
 
 /* ════════════════════════════════════════════════════════════
-   PER-LOCATION ROLL-UP  (TTM & Run-Rate)
-   ────────────────────────────────────────────────────────────
-   Combined-level metrics must NOT be anchored to the single most
-   recent date in the whole dataset — locations refresh on different
-   cadences (e.g. Lakeview→06/12, Forest→06/16, Buford→04/02), and a
-   stale location would otherwise contribute zero months/weeks to the
-   trailing window and understate the portfolio.
+   INACTIVE-LOCATION DETECTION
+   ════════════════════════════════════════════════════════════
+   A location is "inactive" if it has simply stopped reporting while the
+   rest of the portfolio keeps going — e.g. Midway's last data point is
+   from Oct 2024 while its peers are reporting through mid-2026. Left
+   unfiltered, a frozen location keeps contributing a stale, misleading
+   figure to every rollup (TTM, Run-Rate, location counts) indefinitely.
 
-   Correct approach: compute each location's metric against ITS OWN
-   most recent complete period, then roll up location → deal → portfolio.
-   Summation is associative, so summing per-location values across the
-   in-scope set yields the same total as an explicit deal-by-deal roll-up
-   (and the function also returns a per-deal breakdown for transparency).
+   Detection is RELATIVE, not wall-clock-based: a location is flagged
+   inactive if the gap between its own last reported date and the
+   PORTFOLIO'S reporting frontier (the most recent date seen anywhere in
+   the in-scope data) exceeds INACTIVE_GAP_DAYS. Anchoring on the
+   portfolio's own frontier — not `new Date()` — means this stays correct
+   even if the whole dataset itself lags behind real time (e.g. nightly
+   feeds that are a few days old), and self-adjusts as new data lands:
+   a location that resumes reporting is automatically reclassified active
+   on the next render, no manual list to maintain. */
+const INACTIVE_GAP_DAYS = 90;
 
-   `rows` = the in-scope raw daily/monthly records (already filtered for
-   active deals + deal/location selection). */
+/* Returns { inactiveSet, activeSet, frontier, gaps } where inactiveSet /
+   activeSet are Sets of "deal@@location" keys. `rows` should be scoped to
+   active deals (and ANY deal/location filter you want the frontier itself
+   to respect) but should NOT be date-range filtered — staleness detection
+   needs the true most-recent data, not whatever window is currently shown. */
+function detectInactiveLocations(rows, thresholdDays = INACTIVE_GAP_DAYS) {
+  const dated = rows.filter(r => r.date);
+  if (!dated.length) return { inactiveSet: new Set(), activeSet: new Set(), frontier: null, gaps: {} };
+
+  const frontier = new Date(Math.max(...dated.map(r => r.date.getTime())));
+  const lastSeen = {};
+  dated.forEach(r => {
+    const dl = `${r.deal}@@${r.location || '(unspecified)'}`;
+    const t = r.date.getTime();
+    if (!lastSeen[dl] || t > lastSeen[dl]) lastSeen[dl] = t;
+  });
+
+  const inactiveSet = new Set(), activeSet = new Set(), gaps = {};
+  for (const dl in lastSeen) {
+    const gapDays = (frontier.getTime() - lastSeen[dl]) / 86400000;
+    gaps[dl] = gapDays;
+    (gapDays > thresholdDays ? inactiveSet : activeSet).add(dl);
+  }
+  return { inactiveSet, activeSet, frontier, gaps };
+}
+
+/* Drop rows belonging to inactive deal@@location keys. */
+function excludeInactiveLocations(rows, inactiveSet) {
+  if (!inactiveSet || !inactiveSet.size) return rows;
+  return rows.filter(r => !inactiveSet.has(`${r.deal}@@${r.location || '(unspecified)'}`));
+}
+
+
 /* Format a YYYY-MM aggregation key as "Mon YYYY" for display labels. */
 function ttmKeyLabel(key) {
   if (!key) return '—';
@@ -2407,6 +2452,7 @@ const setS  = (id, p, v)    => { const e = document.getElementById(id); if (e) e
 
 function renderKPIs(monthly) {
   const d = filteredData;
+  const f = getFilters();
   const locs = [...new Set(d.map(r=>r.location).filter(Boolean))];
   // TTM headline = per-location trailing-12 complete months rolled up (each
   // location anchored to its own latest complete month).
@@ -2434,7 +2480,13 @@ function renderKPIs(monthly) {
   set('kpiTTMProdPeriod', ttmPeriodText(ttmProdRes));
   set('kpiAdjCollRate', adjRate != null ? (adjRate*100).toFixed(1) + '%' : '—');
   set('kpiProvDay',    adr.value != null ? fmtM(adr.value) : '—');
+  const inactiveInScope = window._inactiveLocSet
+    ? [...window._inactiveLocSet].filter(k => !f.deal || k.startsWith(f.deal + '@@')).length
+    : 0;
   set('kpiLocations',  locs.length);
+  set('kpiLocationsSub', inactiveInScope
+    ? `In selected view · ${inactiveInScope} inactive excluded`
+    : 'In selected view');
   set('kpiLatestDate', latest ? latest.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—');
 
   // Deal Stage tile — show the stage when a single deal is in scope, otherwise
@@ -2502,6 +2554,7 @@ function ragScopeRows() {
   const f = getFilters();
   return allData.filter(r => {
     if (window._activeDeals && !window._activeDeals.has(r.deal)) return false;
+    if (window._inactiveLocSet && window._inactiveLocSet.has(`${r.deal}@@${r.location || '(unspecified)'}`)) return false;
     if (!isFullDataMonth(r)) return false;
     if (f.deal && r.deal !== f.deal) return false;
     if (f.locs.size > 0 && !f.locs.has(r.location)) return false;
@@ -2590,6 +2643,7 @@ function renderRunRate() {
   // in-scope rows, date-range ignored, daily granularity (weekly needs weeks)
   let rows = allData.filter(r => {
     if (window._activeDeals && !window._activeDeals.has(r.deal)) return false;
+    if (window._inactiveLocSet && window._inactiveLocSet.has(`${r.deal}@@${r.location || '(unspecified)'}`)) return false;
     if (f.deal && r.deal !== f.deal) return false;
     if (f.locs.size > 0 && !f.locs.has(r.location)) return false;
     return r.granularity === 'daily' && r.week;
