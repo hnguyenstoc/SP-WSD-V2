@@ -1823,11 +1823,21 @@ function ttmPeriodText(ttmRes) {
    Rather than assuming the last 13 weeks represent a flat 13/52 slice of the
    year (which overstates spring-peak periods and understates winter-trough
    periods), each location's L13W window is annualized using how much that
-   SAME week-of-year window contributed to that location's PRIOR full year:
+   SAME week-of-year window contributed to that location's PRIOR calendar
+   year(s):
 
      x%  = (prior-year revenue in the matching week-of-year window)
-           / (prior-year full-year revenue)
+           / (weighted blend of whole prior calendar-year totals)
      Annualized Run-Rate = current L13W revenue / x%
+
+   The denominator is a WEIGHTED BLEND of full prior calendar-year totals,
+   weighted by how many of the 13 matched prior-year weeks fall in each
+   calendar year. Most windows match entirely into one prior year (100%
+   weight there); a window crossing Dec→Jan matches into two prior years
+   (e.g. 3 weeks in 2024 + 10 weeks in 2025), so the denominator blends
+   2024's and 2025's full-year totals 3:10 — avoiding both the original bug
+   (summing both years outright, which doubled the denominator and halved
+   x%) and the opposite distortion of ignoring one of the two years.
 
    Example: if last year's weeks 12–24 made up 27% of last year's full-year
    total (rather than the flat 13/52 ≈ 25%), this year's matching 13-week
@@ -1860,20 +1870,25 @@ function calcRunRateByLocation(rows, nWeeks = 13) {
     let ann = null;
     if (havePriorWindow) {
       const priorWinSum = priorWeeks.reduce((s, w) => s + w.adjCollections, 0);
-      // "Prior full year" = a genuine trailing 52-WEEK window ending at the
-      // most recent matched prior-year week — NOT a sum of whole calendar
-      // years. Summing by calendar year breaks whenever the current L13W
-      // window straddles Dec→Jan: its prior-year counterpart then spans TWO
-      // calendar years, and summing "every week in either of those years"
-      // silently doubles the denominator (→ halves x% → doubles the
-      // annualized run-rate). Anchoring on a fixed 52-week trailing window
-      // sidesteps that regardless of where the window falls.
-      const anchorKey = priorWeeks[priorWeeks.length - 1].key;
-      const anchorIdx = allWeeks.findIndex(w => w.key === anchorKey);
-      const priorFullWin = anchorIdx >= 0 ? allWeeks.slice(Math.max(0, anchorIdx - 51), anchorIdx + 1) : [];
-      const priorFullSum = priorFullWin.reduce((s, w) => s + w.adjCollections, 0);
-      const x = (priorFullWin.length >= 52 && priorFullSum > 0) ? priorWinSum / priorFullSum : null;
-      if (x && x > 0) { ann = currSum / x; anySeasonal = true; }
+      // "Prior full year" = a WEIGHTED BLEND of whole calendar-year totals,
+      // weighted by how many of the N matched prior-year weeks fall in each
+      // calendar year. Most windows match into a single prior year (weight
+      // 100%), but a window crossing Dec→Jan matches into two prior years
+      // (e.g. 3 weeks in 2024, 10 weeks in 2025) — summing both full years
+      // outright would double-count (the original bug); using only one
+      // ignores the other. Weighting by week-count blends them in the same
+      // proportion they appear in the matched window.
+      const yearWeekCounts = {};
+      priorWeeks.forEach(w => { yearWeekCounts[w.year] = (yearWeekCounts[w.year] || 0) + 1; });
+      const calYearSum = {};
+      allWeeks.forEach(w => { calYearSum[w.year] = (calYearSum[w.year] || 0) + w.adjCollections; });
+      const years = Object.keys(yearWeekCounts);
+      const haveAllYears = years.every(y => calYearSum[y] != null);
+      if (haveAllYears) {
+        const priorFullSum = years.reduce((s, y) => s + (yearWeekCounts[y] / N) * calYearSum[y], 0);
+        const x = priorFullSum > 0 ? priorWinSum / priorFullSum : null;
+        if (x && x > 0) { ann = currSum / x; anySeasonal = true; }
+      }
     }
     if (ann == null) { ann = (currSum / N) * 52; anyFallback = true; }
 
