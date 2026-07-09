@@ -768,7 +768,7 @@ table.dt td.neg   { color: var(--red);   font-weight: 600; }
     <div class="export-dropdown">
       <button class="hbtn ghost" id="exportBtn" onclick="toggleExportDropdown()">⬇ Export ▾</button>
       <div class="export-dropdown-content" id="exportDropdown">
-        <button onclick="exportDashboardPDF()">📄 PDF Report<span class="exp-sub">IC-ready</span></button>
+        <button onclick="exportDashboardPDF()">📄 PDF Report</button>
         <button onclick="exportDashboardExcel()">📊 Excel Data<span class="exp-sub">.xlsx</span></button>
       </div>
     </div>
@@ -3418,21 +3418,9 @@ function exportDashboardExcel() {
   try {
     const dealLabel = document.getElementById('dealCselLabel')?.textContent?.trim() || 'All Deals';
 
-    const monthly = trimTrailingPartial(aggregateMonthly(filteredData));
-
-    // ── Sheet 1: Summary — one row per deal/location/month, mirrors the Data Table tab ──
-    const summaryRows = monthly.map(m => ({
-      'Month': m.label,
-      'Year': m.year,
-      'Adj. Collections ($)': Math.round(m.adjCollections || 0),
-      'Charge Amount ($)': Math.round(m.chargeAmount || 0),
-      'Collection Rate': m.collRate != null ? Math.round(m.collRate * 1000) / 10 + '%' : '',
-      'Encounters': m.encounters || 0,
-      'Procedures': m.procedures || 0,
-      'Locations Reporting': m.locations != null ? m.locations : ''
-    }));
-
-    // ── Sheet 2: Raw Data — the actual source rows behind the dashboard ──
+    // Raw Data — the actual source rows behind the dashboard, honoring current
+    // filters. Charge Amount / Adj. Collections keep full decimal precision
+    // (no rounding) so the export ties out to the source Google Sheet exactly.
     const rawRows = filteredData.map(r => ({
       'Deal': r.deal || '',
       'Location': r.location || '',
@@ -3441,19 +3429,60 @@ function exportDashboardExcel() {
       'Month': r.month || '',
       'Week': r.week || '',
       'Granularity': r.granularity || '',
-      'Charge Amount ($)': r.chargeAmount != null ? Math.round(r.chargeAmount) : '',
-      'Adj. Collections ($)': r.adjCollections != null ? Math.round(r.adjCollections) : '',
+      'Charge Amount ($)': r.chargeAmount != null ? r.chargeAmount : '',
+      'Adj. Collections ($)': r.adjCollections != null ? r.adjCollections : '',
       'Encounters': r.encounters != null ? r.encounters : '',
       'Procedures': r.procedures != null ? r.procedures : '',
       'Provider (raw)': r.doctorRaw || ''
     }));
 
     const wb = XLSX.utils.book_new();
-    const summarySheet = XLSX.utils.json_to_sheet(summaryRows);
     const rawSheet = XLSX.utils.json_to_sheet(rawRows);
-    summarySheet['!cols'] = [{wch:14},{wch:8},{wch:18},{wch:16},{wch:14},{wch:12},{wch:12},{wch:16}];
-    rawSheet['!cols'] = [{wch:20},{wch:20},{wch:12},{wch:8},{wch:10},{wch:8},{wch:11},{wch:16},{wch:18},{wch:11},{wch:11},{wch:16}];
-    XLSX.utils.book_append_sheet(wb, summarySheet, 'Summary');
+
+    // Column map (0-indexed): A Deal, B Location, C Date, D Year, E Month, F Week,
+    // G Granularity, H Charge Amount, I Adj. Collections, J Encounters, K Procedures, L Provider
+    const COL = { chargeAmount: 7, adjCollections: 8, encounters: 9 };
+    const range = XLSX.utils.decode_range(rawSheet['!ref']);
+    const lastRow = range.e.r; // 0-indexed last data row
+
+    // Full decimal precision on the dollar columns
+    for (let R = 1; R <= lastRow; R++) {
+      ['chargeAmount', 'adjCollections'].forEach(key => {
+        const ref = XLSX.utils.encode_cell({ r: R, c: COL[key] });
+        if (rawSheet[ref] && rawSheet[ref].t === 'n') rawSheet[ref].z = '#,##0.00';
+      });
+    }
+
+    // Live formula columns — same calculations the dashboard uses (Collection
+    // Rate = Adj. Collections ÷ Charge Amount; Avg Ticket = Adj. Collections ÷
+    // Encounters), computed by Excel per row rather than hardcoded values, so
+    // the workbook stays auditable and recalculates if a value is edited.
+    const COLLRATE_COL = 12; // column M
+    const AVGTICKET_COL = 13; // column N
+    rawSheet[XLSX.utils.encode_cell({ r: 0, c: COLLRATE_COL })] = { t: 's', v: 'Collection Rate' };
+    rawSheet[XLSX.utils.encode_cell({ r: 0, c: AVGTICKET_COL })] = { t: 's', v: 'Avg Ticket ($)' };
+
+    for (let R = 1; R <= lastRow; R++) {
+      const rowNum = R + 1; // 1-indexed for A1-style formula refs
+      const chargeRef = 'H' + rowNum;
+      const adjRef = 'I' + rowNum;
+      const encRef = 'J' + rowNum;
+
+      rawSheet[XLSX.utils.encode_cell({ r: R, c: COLLRATE_COL })] = {
+        t: 'n', f: `IF(${chargeRef}=0,"",${adjRef}/${chargeRef})`, z: '0.0%'
+      };
+      rawSheet[XLSX.utils.encode_cell({ r: R, c: AVGTICKET_COL })] = {
+        t: 'n', f: `IF(${encRef}=0,"",${adjRef}/${encRef})`, z: '#,##0.00'
+      };
+    }
+
+    range.e.c = Math.max(range.e.c, AVGTICKET_COL);
+    rawSheet['!ref'] = XLSX.utils.encode_range(range);
+
+    rawSheet['!cols'] = [
+      {wch:20},{wch:20},{wch:12},{wch:8},{wch:10},{wch:8},{wch:11},
+      {wch:16},{wch:18},{wch:11},{wch:11},{wch:16},{wch:14},{wch:13}
+    ];
     XLSX.utils.book_append_sheet(wb, rawSheet, 'Raw Data');
 
     const fname = `SPUSA_Pipeline_Data_${dealLabel.replace(/[^\w-]+/g, '_')}_${new Date().toISOString().slice(0,10)}.xlsx`;
