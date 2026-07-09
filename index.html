@@ -3404,6 +3404,8 @@ async function exportDashboardPDF() {
     const GOLD = [180, 83, 9];
     const SLATE = [75, 85, 99];
 
+    const getTxt = id => document.getElementById(id)?.textContent?.trim().replace(/\s+/g, ' ') || '—';
+
     const dealLabel = document.getElementById('dealCselLabel')?.textContent?.trim() || 'All Deals';
     const locLabel = document.getElementById('locationMselLabel')?.textContent?.trim() || 'All Locations';
     const fStart = document.getElementById('filterStart')?.value || '';
@@ -3455,7 +3457,7 @@ async function exportDashboardPDF() {
     pdf.setTextColor(240, 190, 130);
     pdf.text('CONFIDENTIAL  ·  PREPARED BY STOC ADVISORY', marginX, 98);
 
-    // Scope stat block
+    // Scope stat block — wrap-aware so long deal names don't collide with the divider
     const stats = [
       ['Deal Scope', dealLabel],
       ['Location Scope', locLabel],
@@ -3463,39 +3465,94 @@ async function exportDashboardPDF() {
       ['Report Generated', generatedAt]
     ];
     const colW = usableW / 4;
-    const statY = 160;
+    const statLabelY = 150;
+    const statValueY = statLabelY + 20;
+    let maxStatLines = 1;
+    const wrappedStats = stats.map(s => {
+      const lines = pdf.splitTextToSize(String(s[1]), colW - 18);
+      maxStatLines = Math.max(maxStatLines, lines.length);
+      return lines;
+    });
     stats.forEach((s, idx) => {
       const x = marginX + idx * colW;
       pdf.setFont('helvetica', 'bold');
       pdf.setFontSize(8);
       pdf.setTextColor(...SLATE);
-      pdf.text(s[0].toUpperCase(), x, statY);
+      pdf.text(s[0].toUpperCase(), x, statLabelY);
       pdf.setFont('helvetica', 'normal');
       pdf.setFontSize(13);
       pdf.setTextColor(20, 20, 20);
-      pdf.text(String(s[1]), x, statY + 20, { maxWidth: colW - 14 });
+      pdf.text(wrappedStats[idx], x, statValueY, { maxWidth: colW - 18, lineHeightFactor: 1.25 });
     });
+    const dividerY = statValueY + maxStatLines * 15 + 14;
     pdf.setDrawColor(221, 226, 238);
     pdf.setLineWidth(0.75);
-    pdf.line(marginX, statY + 34, pageW - marginX, statY + 34);
+    pdf.line(marginX, dividerY, pageW - marginX, dividerY);
 
-    // Contents
-    let cy = statY + 70;
+    // Portfolio snapshot card — real KPIs pulled from the live dashboard at export time
+    const cardY = dividerY + 24;
+    const cardH = 92;
+    pdf.setFillColor(244, 246, 251);
+    pdf.roundedRect(marginX, cardY, usableW, cardH, 6, 6, 'F');
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(8.5);
+    pdf.setTextColor(...NAVY);
+    pdf.text('PORTFOLIO SNAPSHOT AT TIME OF EXPORT', marginX + 18, cardY + 24);
+
+    const snapKPIs = [
+      ['TTM Adj. Revenue', getTxt('cmpTTM')],
+      ['LOI Revenue', getTxt('cmpLOI')],
+      ['TTM vs LOI Variance', getTxt('cmpVarP')],
+      ['Run-Rate vs LOI', getTxt('rrVar')]
+    ];
+    const snapColW = (usableW - 36) / 4;
+    snapKPIs.forEach((k, idx) => {
+      const x = marginX + 18 + idx * snapColW;
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(7.5);
+      pdf.setTextColor(...SLATE);
+      pdf.text(k[0].toUpperCase(), x, cardY + 46);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(16);
+      pdf.setTextColor(...NAVY);
+      pdf.text(k[1], x, cardY + 70);
+    });
+
+    // Contents (left) + About this report (right) — fills the width instead of leaving it blank
+    const listTopY = cardY + cardH + 36;
     pdf.setFont('helvetica', 'bold');
     pdf.setFontSize(9.5);
     pdf.setTextColor(...NAVY);
-    pdf.text('CONTENTS', marginX, cy);
-    cy += 24;
+    pdf.text('CONTENTS', marginX, listTopY);
+    let cy = listTopY + 22;
     sections.forEach(sec => {
       pdf.setFont('helvetica', 'bold');
       pdf.setFontSize(10.5);
       pdf.setTextColor(...GOLD);
       pdf.text(sec.num, marginX, cy);
       pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(10.5);
       pdf.setTextColor(30, 30, 30);
       pdf.text(sec.label, marginX + 34, cy);
-      cy += 22;
+      cy += 20;
     });
+
+    const notesX = marginX + usableW / 2 + 30;
+    const notesW = usableW / 2 - 30;
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(9.5);
+    pdf.setTextColor(...NAVY);
+    pdf.text('ABOUT THIS REPORT', notesX, listTopY);
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(9);
+    pdf.setTextColor(...SLATE);
+    pdf.text(
+      'This report reflects the deal, location, and date-range filters applied in the live dashboard at the time of ' +
+      'export. TTM, run-rate, and YoY figures are computed against complete reporting periods only; the current ' +
+      'in-progress period is excluded from period-over-period comparisons. Figures are subject to revision as ' +
+      'underlying source data is updated.',
+      notesX, listTopY + 20, { maxWidth: notesW, lineHeightFactor: 1.35 }
+    );
 
     // Disclaimer
     pdf.setFont('helvetica', 'normal');
@@ -3504,7 +3561,7 @@ async function exportDashboardPDF() {
     pdf.text(
       'This report is confidential and prepared solely for the named recipient(s) for internal deal evaluation purposes. ' +
       'Distribution beyond the intended audience is prohibited without prior written consent from STOC Advisory.',
-      marginX, pageH - 48, { maxWidth: usableW }
+      marginX, pageH - 30, { maxWidth: usableW }
     );
 
     /* ── section pages ─────────────────────────────────────────── */
@@ -3522,24 +3579,32 @@ async function exportDashboardPDF() {
         logging: false
       });
 
-      const imgData = canvas.toDataURL('image/png');
+      // Slice the captured canvas into exact per-page chunks (rather than shifting
+      // one giant image across pages) so no page ever shows more than usableH of
+      // content — eliminates overlap with the header/footer bands.
       const imgW = usableW;
-      const imgH = canvas.height * imgW / canvas.width;
+      const pxPerPt = canvas.width / imgW;
+      const pageHeightPx = Math.floor(usableH * pxPerPt);
 
-      pdf.addPage();
-      drawPageHeader(sec.label, sec.num);
+      let renderedPx = 0;
+      let pageIdx = 0;
+      while (renderedPx < canvas.height) {
+        const sliceHeightPx = Math.min(pageHeightPx, canvas.height - renderedPx);
+        const sliceCanvas = document.createElement('canvas');
+        sliceCanvas.width = canvas.width;
+        sliceCanvas.height = sliceHeightPx;
+        const ctx = sliceCanvas.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
+        ctx.drawImage(canvas, 0, renderedPx, canvas.width, sliceHeightPx, 0, 0, canvas.width, sliceHeightPx);
 
-      let heightLeft = imgH;
-      let position = marginTop;
-      pdf.addImage(imgData, 'PNG', marginX, position, imgW, imgH);
-      heightLeft -= usableH;
-
-      while (heightLeft > 0) {
         pdf.addPage();
-        drawPageHeader(sec.label + ' (cont.)', sec.num);
-        position = marginTop - (imgH - heightLeft);
-        pdf.addImage(imgData, 'PNG', marginX, position, imgW, imgH);
-        heightLeft -= usableH;
+        drawPageHeader(pageIdx === 0 ? sec.label : sec.label + ' (cont.)', sec.num);
+        const sliceHeightPt = sliceHeightPx / pxPerPt;
+        pdf.addImage(sliceCanvas.toDataURL('image/png'), 'PNG', marginX, marginTop, imgW, sliceHeightPt);
+
+        renderedPx += sliceHeightPx;
+        pageIdx++;
       }
     }
 
