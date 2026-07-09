@@ -3388,7 +3388,7 @@ async function exportDashboardPDF() {
 
   try {
     const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF({ orientation: 'p', unit: 'pt', format: 'letter' });
+    const pdf = new jsPDF({ orientation: 'l', unit: 'pt', format: 'letter' });
     const pageW = pdf.internal.pageSize.getWidth();
     const pageH = pdf.internal.pageSize.getHeight();
     const marginX = 28;
