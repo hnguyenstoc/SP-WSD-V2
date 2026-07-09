@@ -3388,6 +3388,30 @@ async function exportDashboardPDF() {
 
   if (btn) { btn.disabled = true; btn.textContent = 'Exporting…'; }
 
+  // Zoom controls (Trends/YoY tabs) are a live-UI affordance with no meaning on a
+  // static page — hide them for the duration of the capture, restore afterward.
+  const zoomEls = document.querySelectorAll('.zoom-controls');
+  zoomEls.forEach(el => { el.dataset._pdfPrevDisplay = el.style.display; el.style.display = 'none'; });
+
+  // Best-effort fetch of brand logos as data URIs so they can be embedded in the PDF.
+  // Falls back to a text lockup if the source can't be fetched (e.g. CORS).
+  async function loadImageAsDataURL(url) {
+    try {
+      const res = await fetch(url, { mode: 'cors' });
+      if (!res.ok) throw new Error('fetch failed: ' + res.status);
+      const blob = await res.blob();
+      return await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    } catch (e) {
+      console.warn('[PDF Export] logo fetch failed for', url, e);
+      return null;
+    }
+  }
+
   try {
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF({ orientation: 'l', unit: 'pt', format: 'letter' });
@@ -3404,14 +3428,37 @@ async function exportDashboardPDF() {
     const GOLD = [180, 83, 9];
     const SLATE = [75, 85, 99];
 
-    const getTxt = id => document.getElementById(id)?.textContent?.trim().replace(/\s+/g, ' ') || '—';
+    const getTxt = id => {
+      const raw = document.getElementById(id)?.textContent?.trim().replace(/\s+/g, ' ') || '—';
+      // jsPDF's core Helvetica font only supports WinAnsi encoding — typographic
+      // characters like the unicode minus sign render as garbage glyphs, so map
+      // them back to plain ASCII before they ever reach pdf.text().
+      return raw
+        .replace(/\u2212/g, '-')
+        .replace(/[\u2013\u2014]/g, '-')
+        .replace(/[\u2191\u2193\u25B2\u25BC\u25B6\u25C0]/g, '')
+        .trim();
+    };
 
     const dealLabel = document.getElementById('dealCselLabel')?.textContent?.trim() || 'All Deals';
     const locLabel = document.getElementById('locationMselLabel')?.textContent?.trim() || 'All Locations';
-    const fStart = document.getElementById('filterStart')?.value || '';
-    const fEnd = document.getElementById('filterEnd')?.value || '';
-    const rangeLabel = (fStart || fEnd) ? `${fStart || '…'} \u2013 ${fEnd || '…'}` : 'Full history';
+
+    // Actual period covered — derived from the in-scope data's real date range
+    // (which already reflects any From/To filters applied), not a vague label.
+    const datedRows = filteredData.filter(r => r.date);
+    let rangeLabel = 'No data in current scope';
+    if (datedRows.length) {
+      const times = datedRows.map(r => r.date.getTime());
+      const fmtMon = d => new Date(d).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+      const minD = Math.min(...times), maxD = Math.max(...times);
+      rangeLabel = minD === maxD ? fmtMon(minD) : `${fmtMon(minD)} \u2013 ${fmtMon(maxD)}`;
+    }
     const generatedAt = new Date().toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+
+    const [spusaLogoData, stocLogoData] = await Promise.all([
+      loadImageAsDataURL('https://smilepartnersusa.com/wp-content/uploads/2025/10/SPUSA_Logo-1.png'),
+      loadImageAsDataURL('https://www.stocadvisory.com/_next/image?url=%2Fstoc-main-logo-cropped.png&w=256&q=75')
+    ]);
 
     /* ── shared report header (every content page) ───────────── */
     function drawPageHeader(sectionLabel, sectionNum) {
@@ -3440,22 +3487,51 @@ async function exportDashboardPDF() {
     }
 
     /* ── cover page ────────────────────────────────────────────── */
+    const bandH = 104;
     pdf.setFillColor(...NAVY);
-    pdf.rect(0, 0, pageW, 118, 'F');
+    pdf.rect(0, 0, pageW, bandH, 'F');
     pdf.setFillColor(...GOLD);
-    pdf.rect(0, 118, pageW, 3, 'F');
+    pdf.rect(0, bandH, pageW, 3, 'F');
 
     pdf.setTextColor(255, 255, 255);
     pdf.setFont('helvetica', 'bold');
-    pdf.setFontSize(25);
-    pdf.text('Pipeline Performance Report', marginX, 54);
-    pdf.setFont('helvetica', 'normal');
-    pdf.setFontSize(12);
-    pdf.text('SPUSA · Dental Services Organization Portfolio', marginX, 76);
+    pdf.setFontSize(24);
+    pdf.text('Pipeline Performance Report', marginX, 48);
     pdf.setFont('helvetica', 'bold');
     pdf.setFontSize(8.5);
     pdf.setTextColor(240, 190, 130);
-    pdf.text('CONFIDENTIAL  ·  PREPARED BY STOC ADVISORY', marginX, 98);
+    pdf.text('CONFIDENTIAL  ·  PREPARED BY STOC ADVISORY', marginX, 74);
+
+    // Brand logos, right-aligned on white chips for contrast against the navy band.
+    // Falls back to a text lockup if either logo couldn't be fetched (e.g. CORS).
+    const logoChipH = 42;
+    const logoChipY = (bandH - logoChipH) / 2;
+    let logoRightX = pageW - marginX;
+    function placeLogoChip(dataUrl, rightX) {
+      if (!dataUrl) return rightX;
+      try {
+        const props = pdf.getImageProperties(dataUrl);
+        const h = logoChipH - 16;
+        const w = h * (props.width / props.height);
+        const chipW = w + 20;
+        const chipX = rightX - chipW;
+        pdf.setFillColor(255, 255, 255);
+        pdf.roundedRect(chipX, logoChipY, chipW, logoChipH, 5, 5, 'F');
+        pdf.addImage(dataUrl, props.fileType || 'PNG', chipX + 10, logoChipY + 8, w, h);
+        return chipX - 12;
+      } catch (e) {
+        console.warn('[PDF Export] logo placement failed', e);
+        return rightX;
+      }
+    }
+    const rightAfterStoc = placeLogoChip(stocLogoData, logoRightX);
+    const rightAfterBoth = placeLogoChip(spusaLogoData, rightAfterStoc);
+    if (!spusaLogoData && !stocLogoData) {
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(9);
+      pdf.setTextColor(255, 255, 255);
+      pdf.text('SMILE PARTNERS USA  ·  STOC ADVISORY', pageW - marginX, bandH / 2 + 4, { align: 'right' });
+    }
 
     // Scope stat block — wrap-aware so long deal names don't collide with the divider
     const stats = [
@@ -3465,7 +3541,7 @@ async function exportDashboardPDF() {
       ['Report Generated', generatedAt]
     ];
     const colW = usableW / 4;
-    const statLabelY = 150;
+    const statLabelY = bandH + 3 + 26;
     const statValueY = statLabelY + 20;
     let maxStatLines = 1;
     const wrappedStats = stats.map(s => {
@@ -3497,7 +3573,7 @@ async function exportDashboardPDF() {
     pdf.setFont('helvetica', 'bold');
     pdf.setFontSize(8.5);
     pdf.setTextColor(...NAVY);
-    pdf.text('PORTFOLIO SNAPSHOT AT TIME OF EXPORT', marginX + 18, cardY + 24);
+    pdf.text('PORTFOLIO SNAPSHOT', marginX + 18, cardY + 24);
 
     const snapKPIs = [
       ['TTM Adj. Revenue', getTxt('cmpTTM')],
@@ -3547,10 +3623,11 @@ async function exportDashboardPDF() {
     pdf.setFontSize(9);
     pdf.setTextColor(...SLATE);
     pdf.text(
-      'This report reflects the deal, location, and date-range filters applied in the live dashboard at the time of ' +
-      'export. TTM, run-rate, and YoY figures are computed against complete reporting periods only; the current ' +
-      'in-progress period is excluded from period-over-period comparisons. Figures are subject to revision as ' +
-      'underlying source data is updated.',
+      'This report monitors revenue performance across the Smile Partners USA dental services pipeline, benchmarking ' +
+      'trailing and forward-looking results against the Letter of Intent baseline established at deal entry. It is ' +
+      'intended to support ongoing portfolio monitoring and to surface material variances for deal team and ' +
+      'investment committee review, using the deal, location, and date-range scope applied in the live dashboard ' +
+      'at the time of export.',
       notesX, listTopY + 20, { maxWidth: notesW, lineHeightFactor: 1.35 }
     );
 
@@ -3630,6 +3707,7 @@ async function exportDashboardPDF() {
     showToast('PDF export failed — see console');
   } finally {
     switchTab(originalTab);
+    zoomEls.forEach(el => { el.style.display = el.dataset._pdfPrevDisplay || ''; delete el.dataset._pdfPrevDisplay; });
     if (btn) { btn.disabled = false; btn.textContent = '⬇ Export PDF'; }
   }
 }
