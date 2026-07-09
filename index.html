@@ -13,6 +13,7 @@
 <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
 /* ─────────────────────────────────────────────────────────────
    DESIGN TOKENS  ·  Light / Professional Finance Theme
@@ -172,6 +173,24 @@ body {
 .hbtn.ghost:hover { background: rgba(255,255,255,0.18); }
 .hbtn.primary { background: #FFFFFF; color: var(--navy); }
 .hbtn.primary:hover { background: #EEF1F7; }
+
+/* ── EXPORT DROPDOWN ─────────────────────────────────────── */
+.export-dropdown { position: relative; display: inline-block; }
+.export-dropdown-content {
+  display: none; position: absolute; top: 100%; right: 0; margin-top: 6px;
+  background: var(--surface); min-width: 168px; border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md); padding: 6px; z-index: 1000;
+}
+.export-dropdown-content.show { display: block; }
+.export-dropdown-content button {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 9px 12px; border: none; background: none; cursor: pointer;
+  font-size: 12.5px; font-weight: 600; color: var(--text);
+  border-radius: var(--radius-sm); text-align: left;
+  font-family: 'Inter', -apple-system, sans-serif; transition: background 0.12s;
+}
+.export-dropdown-content button:hover { background: var(--surface2); }
+.export-dropdown-content .exp-sub { font-size: 10.5px; font-weight: 400; color: var(--text3); margin-left: auto; }
 
 /* ── FILTER BAR ──────────────────────────────────────────── */
 .filter-bar {
@@ -746,7 +765,13 @@ table.dt td.neg   { color: var(--red);   font-weight: 600; }
       <span class="dot" id="statusDot"></span>
       <span id="lastUpdated">Connecting…</span>
     </div>
-    <button class="hbtn ghost" id="exportPdfBtn" onclick="exportDashboardPDF()">⬇ Export PDF</button>
+    <div class="export-dropdown">
+      <button class="hbtn ghost" id="exportBtn" onclick="toggleExportDropdown()">⬇ Export ▾</button>
+      <div class="export-dropdown-content" id="exportDropdown">
+        <button onclick="exportDashboardPDF()">📄 PDF Report<span class="exp-sub">IC-ready</span></button>
+        <button onclick="exportDashboardExcel()">📊 Excel Data<span class="exp-sub">.xlsx</span></button>
+      </div>
+    </div>
     <button class="hbtn ghost" onclick="refreshData()">↻ Refresh</button>
     <img class="header-logo-stoc"
          src="https://www.stocadvisory.com/_next/image?url=%2Fstoc-main-logo-cropped.png&w=256&q=75"
@@ -3366,6 +3391,83 @@ function showToast(msg) {
 }
 
 /* ════════════════════════════════════════════════════════════
+   EXPORT DROPDOWN
+   ════════════════════════════════════════════════════════════ */
+function toggleExportDropdown() {
+  document.getElementById('exportDropdown')?.classList.toggle('show');
+}
+window.addEventListener('click', e => {
+  if (!e.target.closest('.export-dropdown')) {
+    document.getElementById('exportDropdown')?.classList.remove('show');
+  }
+});
+
+/* ════════════════════════════════════════════════════════════
+   EXCEL EXPORT
+   ─────────────────────────────────────────────────────────────
+   Two sheets: "Summary" (monthly roll-up matching the Data Table
+   tab) and "Raw Data" (every source record in filteredData — the
+   actual rows loaded from the location-level Google Sheet tabs
+   that feed the dashboard, honoring current filters).
+   ════════════════════════════════════════════════════════════ */
+function exportDashboardExcel() {
+  document.getElementById('exportDropdown')?.classList.remove('show');
+  const btn = document.getElementById('exportBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Exporting…'; }
+
+  try {
+    const dealLabel = document.getElementById('dealCselLabel')?.textContent?.trim() || 'All Deals';
+
+    const monthly = trimTrailingPartial(aggregateMonthly(filteredData));
+
+    // ── Sheet 1: Summary — one row per deal/location/month, mirrors the Data Table tab ──
+    const summaryRows = monthly.map(m => ({
+      'Month': m.label,
+      'Year': m.year,
+      'Adj. Collections ($)': Math.round(m.adjCollections || 0),
+      'Charge Amount ($)': Math.round(m.chargeAmount || 0),
+      'Collection Rate': m.collRate != null ? Math.round(m.collRate * 1000) / 10 + '%' : '',
+      'Encounters': m.encounters || 0,
+      'Procedures': m.procedures || 0,
+      'Locations Reporting': m.locations != null ? m.locations : ''
+    }));
+
+    // ── Sheet 2: Raw Data — the actual source rows behind the dashboard ──
+    const rawRows = filteredData.map(r => ({
+      'Deal': r.deal || '',
+      'Location': r.location || '',
+      'Date': r.date ? r.date.toLocaleDateString('en-US') : '',
+      'Year': r.year || '',
+      'Month': r.month || '',
+      'Week': r.week || '',
+      'Granularity': r.granularity || '',
+      'Charge Amount ($)': r.chargeAmount != null ? Math.round(r.chargeAmount) : '',
+      'Adj. Collections ($)': r.adjCollections != null ? Math.round(r.adjCollections) : '',
+      'Encounters': r.encounters != null ? r.encounters : '',
+      'Procedures': r.procedures != null ? r.procedures : '',
+      'Provider (raw)': r.doctorRaw || ''
+    }));
+
+    const wb = XLSX.utils.book_new();
+    const summarySheet = XLSX.utils.json_to_sheet(summaryRows);
+    const rawSheet = XLSX.utils.json_to_sheet(rawRows);
+    summarySheet['!cols'] = [{wch:14},{wch:8},{wch:18},{wch:16},{wch:14},{wch:12},{wch:12},{wch:16}];
+    rawSheet['!cols'] = [{wch:20},{wch:20},{wch:12},{wch:8},{wch:10},{wch:8},{wch:11},{wch:16},{wch:18},{wch:11},{wch:11},{wch:16}];
+    XLSX.utils.book_append_sheet(wb, summarySheet, 'Summary');
+    XLSX.utils.book_append_sheet(wb, rawSheet, 'Raw Data');
+
+    const fname = `SPUSA_Pipeline_Data_${dealLabel.replace(/[^\w-]+/g, '_')}_${new Date().toISOString().slice(0,10)}.xlsx`;
+    XLSX.writeFile(wb, fname);
+    showToast('Excel exported');
+  } catch (err) {
+    console.error('[Excel Export] error:', err);
+    showToast('Excel export failed — see console');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '⬇ Export ▾'; }
+  }
+}
+
+/* ════════════════════════════════════════════════════════════
    PDF EXPORT
    ─────────────────────────────────────────────────────────────
    Builds a PE-ready report: cover page (scope, period, contents)
@@ -3376,7 +3478,7 @@ function showToast(msg) {
    than a raw screenshot.
    ════════════════════════════════════════════════════════════ */
 async function exportDashboardPDF() {
-  const btn = document.getElementById('exportPdfBtn');
+  const btn = document.getElementById('exportBtn');
   const originalTab = document.querySelector('.tab-btn.active')?.dataset.tab || 'overview';
 
   const sections = [
@@ -3708,7 +3810,8 @@ async function exportDashboardPDF() {
   } finally {
     switchTab(originalTab);
     zoomEls.forEach(el => { el.style.display = el.dataset._pdfPrevDisplay || ''; delete el.dataset._pdfPrevDisplay; });
-    if (btn) { btn.disabled = false; btn.textContent = '⬇ Export PDF'; }
+    document.getElementById('exportDropdown')?.classList.remove('show');
+    if (btn) { btn.disabled = false; btn.textContent = '⬇ Export ▾'; }
   }
 }
 
