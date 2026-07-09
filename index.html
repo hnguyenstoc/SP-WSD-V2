@@ -11,6 +11,8 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <style>
 /* ─────────────────────────────────────────────────────────────
    DESIGN TOKENS  ·  Light / Professional Finance Theme
@@ -744,6 +746,7 @@ table.dt td.neg   { color: var(--red);   font-weight: 600; }
       <span class="dot" id="statusDot"></span>
       <span id="lastUpdated">Connecting…</span>
     </div>
+    <button class="hbtn ghost" id="exportPdfBtn" onclick="exportDashboardPDF()">⬇ Export PDF</button>
     <button class="hbtn ghost" onclick="refreshData()">↻ Refresh</button>
     <img class="header-logo-stoc"
          src="https://www.stocadvisory.com/_next/image?url=%2Fstoc-main-logo-cropped.png&w=256&q=75"
@@ -3359,6 +3362,108 @@ function showToast(msg) {
   el.classList.add('show');
   clearTimeout(el._t);
   el._t = setTimeout(() => el.classList.remove('show'), 2800);
+}
+
+/* ════════════════════════════════════════════════════════════
+   PDF EXPORT
+   ─────────────────────────────────────────────────────────────
+   Snapshots Overview, Trends, YoY Analysis, and Data Table tabs
+   (in that order) and stitches them into a single multi-page PDF.
+   Each tab is captured via html2canvas (handles Chart.js canvases
+   and rendered HTML tables alike), then sliced across pages with
+   jsPDF using the standard negative-offset pagination technique.
+   ════════════════════════════════════════════════════════════ */
+async function exportDashboardPDF() {
+  const btn = document.getElementById('exportPdfBtn');
+  const originalTab = document.querySelector('.tab-btn.active')?.dataset.tab || 'overview';
+
+  const sections = [
+    { id: 'overview', label: 'Overview' },
+    { id: 'trends',   label: 'Trends' },
+    { id: 'yoy',      label: 'YoY Analysis' },
+    { id: 'table',    label: 'Data Table' }
+  ];
+
+  if (btn) { btn.disabled = true; btn.textContent = 'Exporting…'; }
+
+  try {
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ orientation: 'p', unit: 'pt', format: 'letter' });
+    const pageW = pdf.internal.pageSize.getWidth();
+    const pageH = pdf.internal.pageSize.getHeight();
+    const marginX = 28;
+    const marginTop = 78;    // room for header band on every page
+    const marginBottom = 30;
+    const usableW = pageW - marginX * 2;
+    const usableH = pageH - marginTop - marginBottom;
+
+    const dealLabel = document.getElementById('dealCselLabel')?.textContent?.trim() || 'All Deals';
+    const locLabel = document.getElementById('locationMselLabel')?.textContent?.trim() || 'All Locations';
+    const fStart = document.getElementById('filterStart')?.value || '';
+    const fEnd = document.getElementById('filterEnd')?.value || '';
+    const rangeLabel = (fStart || fEnd) ? `${fStart || '…'} to ${fEnd || '…'}` : 'Full history';
+    const generatedAt = new Date().toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+
+    function drawPageHeader(sectionLabel) {
+      pdf.setFillColor(27, 53, 100); // navy
+      pdf.rect(0, 0, pageW, 52, 'F');
+      pdf.setTextColor(255, 255, 255);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(13);
+      pdf.text('SPUSA · Pipeline Sales Dashboard', marginX, 22);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(9);
+      pdf.text(`${sectionLabel}  ·  ${dealLabel}  ·  ${locLabel}  ·  ${rangeLabel}`, marginX, 38);
+      pdf.setTextColor(60, 60, 60);
+      pdf.setFontSize(8);
+      pdf.text(`Generated ${generatedAt}`, marginX, 66);
+    }
+
+    for (let i = 0; i < sections.length; i++) {
+      const sec = sections[i];
+      switchTab(sec.id);
+      // Let Chart.js / layout settle on the freshly-shown panel before capture.
+      await new Promise(r => setTimeout(r, 250));
+
+      const el = document.getElementById('tab-' + sec.id);
+      const canvas = await html2canvas(el, {
+        scale: 2,
+        backgroundColor: '#ffffff',
+        useCORS: true,
+        logging: false
+      });
+
+      const imgData = canvas.toDataURL('image/png');
+      const imgW = usableW;
+      const imgH = canvas.height * imgW / canvas.width;
+
+      if (i > 0) pdf.addPage();
+      drawPageHeader(sec.label);
+
+      let heightLeft = imgH;
+      let position = marginTop;
+      pdf.addImage(imgData, 'PNG', marginX, position, imgW, imgH);
+      heightLeft -= usableH;
+
+      while (heightLeft > 0) {
+        pdf.addPage();
+        drawPageHeader(sec.label + ' (cont.)');
+        position = marginTop - (imgH - heightLeft);
+        pdf.addImage(imgData, 'PNG', marginX, position, imgW, imgH);
+        heightLeft -= usableH;
+      }
+    }
+
+    const fname = `SPUSA_Dashboard_${dealLabel.replace(/[^\w-]+/g, '_')}_${new Date().toISOString().slice(0,10)}.pdf`;
+    pdf.save(fname);
+    showToast('PDF exported');
+  } catch (err) {
+    console.error('[PDF Export] error:', err);
+    showToast('PDF export failed — see console');
+  } finally {
+    switchTab(originalTab);
+    if (btn) { btn.disabled = false; btn.textContent = '⬇ Export PDF'; }
+  }
 }
 
 /* ════════════════════════════════════════════════════════════
