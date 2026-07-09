@@ -1479,8 +1479,12 @@ function onFilterChange() {
     if (inactiveSet.has(`${r.deal}@@${r.location || '(unspecified)'}`)) return false; // exclude stale locations
     if (f.deal && r.deal !== f.deal) return false;
     if (f.locs.size > 0 && !f.locs.has(r.location)) return false;
-    if (f.start && r.date && r.date < new Date(f.start + 'T00:00:00')) return false;
-    if (f.end   && r.date && r.date > new Date(f.end   + 'T23:59:59')) return false;
+    // If a date range is active, a row with no parsed date must be excluded —
+    // previously it silently bypassed the range check (only rows *with* a date
+    // that fell outside the range were excluded), letting malformed/undated
+    // source rows leak into every date-filtered total.
+    if (f.start && (!r.date || r.date < new Date(f.start + 'T00:00:00'))) return false;
+    if (f.end   && (!r.date || r.date > new Date(f.end   + 'T23:59:59'))) return false;
     return true;
   });
   document.getElementById('recordCount').textContent =
@@ -3421,6 +3425,8 @@ function exportDashboardExcel() {
     // Raw Data — the actual source rows behind the dashboard, honoring current
     // filters. Charge Amount / Adj. Collections keep full decimal precision
     // (no rounding) so the export ties out to the source Google Sheet exactly.
+    // Numeric fields default to 0 (not '') so every row stays a true number —
+    // a blank string in a numeric column breaks the row-level formulas below.
     const rawRows = filteredData.map(r => ({
       'Deal': r.deal || '',
       'Location': r.location || '',
@@ -3429,10 +3435,10 @@ function exportDashboardExcel() {
       'Month': r.month || '',
       'Week': r.week || '',
       'Granularity': r.granularity || '',
-      'Charge Amount ($)': r.chargeAmount != null ? r.chargeAmount : '',
-      'Adj. Collections ($)': r.adjCollections != null ? r.adjCollections : '',
-      'Encounters': r.encounters != null ? r.encounters : '',
-      'Procedures': r.procedures != null ? r.procedures : '',
+      'Charge Amount ($)': Number(r.chargeAmount) || 0,
+      'Adj. Collections ($)': Number(r.adjCollections) || 0,
+      'Encounters': Number(r.encounters) || 0,
+      'Procedures': Number(r.procedures) || 0,
       'Provider (raw)': r.doctorRaw || ''
     }));
 
@@ -3441,12 +3447,12 @@ function exportDashboardExcel() {
 
     // Column map (0-indexed): A Deal, B Location, C Date, D Year, E Month, F Week,
     // G Granularity, H Charge Amount, I Adj. Collections, J Encounters, K Procedures, L Provider
-    const COL = { chargeAmount: 7, adjCollections: 8, encounters: 9 };
+    const COL = { chargeAmount: 7, adjCollections: 8, encounters: 9, procedures: 10 };
     const range = XLSX.utils.decode_range(rawSheet['!ref']);
-    const lastRow = range.e.r; // 0-indexed last data row
+    const lastDataRow = range.e.r; // 0-indexed last data row (before totals row)
 
     // Full decimal precision on the dollar columns
-    for (let R = 1; R <= lastRow; R++) {
+    for (let R = 1; R <= lastDataRow; R++) {
       ['chargeAmount', 'adjCollections'].forEach(key => {
         const ref = XLSX.utils.encode_cell({ r: R, c: COL[key] });
         if (rawSheet[ref] && rawSheet[ref].t === 'n') rawSheet[ref].z = '#,##0.00';
@@ -3462,7 +3468,7 @@ function exportDashboardExcel() {
     rawSheet[XLSX.utils.encode_cell({ r: 0, c: COLLRATE_COL })] = { t: 's', v: 'Collection Rate' };
     rawSheet[XLSX.utils.encode_cell({ r: 0, c: AVGTICKET_COL })] = { t: 's', v: 'Avg Ticket ($)' };
 
-    for (let R = 1; R <= lastRow; R++) {
+    for (let R = 1; R <= lastDataRow; R++) {
       const rowNum = R + 1; // 1-indexed for A1-style formula refs
       const chargeRef = 'H' + rowNum;
       const adjRef = 'I' + rowNum;
@@ -3476,7 +3482,39 @@ function exportDashboardExcel() {
       };
     }
 
+    // Totals row — SUM formulas so the export can be reconciled directly
+    // against the source Google Sheet's own totals for the same date range.
+    const totalRowIdx = lastDataRow + 1; // 0-indexed
+    const totalRowNum = totalRowIdx + 1; // 1-indexed
+    const firstRowNum = 2;
+    const lastRowNum = lastDataRow + 1;
+    rawSheet[XLSX.utils.encode_cell({ r: totalRowIdx, c: 0 })] = { t: 's', v: 'TOTAL' };
+    [
+      ['chargeAmount', COL.chargeAmount, '#,##0.00'],
+      ['adjCollections', COL.adjCollections, '#,##0.00'],
+      ['encounters', COL.encounters, '#,##0'],
+      ['procedures', COL.procedures, '#,##0']
+    ].forEach(([key, colIdx, fmt]) => {
+      const colLetter = XLSX.utils.encode_col(colIdx);
+      rawSheet[XLSX.utils.encode_cell({ r: totalRowIdx, c: colIdx })] = {
+        t: 'n', f: `SUM(${colLetter}${firstRowNum}:${colLetter}${lastRowNum})`, z: fmt
+      };
+    });
+    // Portfolio-level Collection Rate / Avg Ticket on the totals row (not a
+    // per-row average — recomputed from the summed dollars, same as the
+    // dashboard's own blended-rate calculations).
+    const totChargeRef = XLSX.utils.encode_col(COL.chargeAmount) + totalRowNum;
+    const totAdjRef = XLSX.utils.encode_col(COL.adjCollections) + totalRowNum;
+    const totEncRef = XLSX.utils.encode_col(COL.encounters) + totalRowNum;
+    rawSheet[XLSX.utils.encode_cell({ r: totalRowIdx, c: COLLRATE_COL })] = {
+      t: 'n', f: `IF(${totChargeRef}=0,"",${totAdjRef}/${totChargeRef})`, z: '0.0%'
+    };
+    rawSheet[XLSX.utils.encode_cell({ r: totalRowIdx, c: AVGTICKET_COL })] = {
+      t: 'n', f: `IF(${totEncRef}=0,"",${totAdjRef}/${totEncRef})`, z: '#,##0.00'
+    };
+
     range.e.c = Math.max(range.e.c, AVGTICKET_COL);
+    range.e.r = totalRowIdx;
     rawSheet['!ref'] = XLSX.utils.encode_range(range);
 
     rawSheet['!cols'] = [
