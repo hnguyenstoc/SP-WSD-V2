@@ -1298,12 +1298,20 @@ function normalizeRow(raw, deal) {
       doctorRaw = k != null ? raw[k] : null;
     }
 
+    // Collection % is a raw imported column in the source sheet (like Charge
+    // Amount/Encounters/Procedures) — not something we derive. Google Sheets
+    // may export it as a whole number (62.3) or a decimal fraction (0.623)
+    // depending on cell formatting, so normalize anything >1 down to a fraction.
+    let collRateRaw = parseNum(getCol(raw, COL_MAP.adjPct, nm));
+    const collRate = collRateRaw > 1 ? collRateRaw / 100 : collRateRaw;
+
     return {
       deal:          deal.name,
       location:      (raw[nm['location']] || '').trim(),
       date:  dateObj, dateStr, year, monthNum, month, week,
       chargeAmount:   parseNum(getCol(raw, COL_MAP.chargeAmount,   nm)),
       adjCollections: parseNum(getCol(raw, COL_MAP.adjCollections, nm)),
+      collRate,
       procedures:     parseNum(getCol(raw, COL_MAP.procedures,     nm)),
       encounters:     parseNum(getCol(raw, COL_MAP.encounters,     nm)),
       doctorRaw,
@@ -3422,11 +3430,11 @@ function exportDashboardExcel() {
   try {
     const dealLabel = document.getElementById('dealCselLabel')?.textContent?.trim() || 'All Deals';
 
-    // Raw Data — the actual source rows behind the dashboard, honoring current
-    // filters. Charge Amount / Adj. Collections keep full decimal precision
-    // (no rounding) so the export ties out to the source Google Sheet exactly.
-    // Numeric fields default to 0 (not '') so every row stays a true number —
-    // a blank string in a numeric column breaks the row-level formulas below.
+    // Raw Data — mirrors the source Google Sheet import tabs: Charge Amount,
+    // Collection Rate, Encounters, and Procedures are raw imported inputs
+    // (hardcoded values, full decimal precision, no rounding). Adjusted
+    // Collections is NOT a raw input — it's built as a live Excel formula
+    // (Charge Amount × Collection Rate) below, same as the source tabs.
     const rawRows = filteredData.map(r => ({
       'Deal': r.deal || '',
       'Location': r.location || '',
@@ -3436,49 +3444,43 @@ function exportDashboardExcel() {
       'Week': r.week || '',
       'Granularity': r.granularity || '',
       'Charge Amount ($)': Number(r.chargeAmount) || 0,
-      'Adj. Collections ($)': Number(r.adjCollections) || 0,
+      'Collection Rate': Number(r.collRate) || 0,
+      'Adj. Collections ($)': 0, // placeholder — replaced with a formula below
       'Encounters': Number(r.encounters) || 0,
-      'Procedures': Number(r.procedures) || 0,
-      'Provider (raw)': r.doctorRaw || ''
+      'Procedures': Number(r.procedures) || 0
     }));
 
     const wb = XLSX.utils.book_new();
     const rawSheet = XLSX.utils.json_to_sheet(rawRows);
 
     // Column map (0-indexed): A Deal, B Location, C Date, D Year, E Month, F Week,
-    // G Granularity, H Charge Amount, I Adj. Collections, J Encounters, K Procedures, L Provider
-    const COL = { chargeAmount: 7, adjCollections: 8, encounters: 9, procedures: 10 };
+    // G Granularity, H Charge Amount, I Collection Rate, J Adj. Collections,
+    // K Encounters, L Procedures
+    const COL = {
+      chargeAmount: 7, collRate: 8, adjCollections: 9,
+      encounters: 10, procedures: 11
+    };
     const range = XLSX.utils.decode_range(rawSheet['!ref']);
     const lastDataRow = range.e.r; // 0-indexed last data row (before totals row)
 
-    // Full decimal precision on the dollar columns
+    // Full decimal precision on both hardcoded input columns — Collection Rate
+    // is not rounded to 1 decimal, it carries the same precision as the source.
     for (let R = 1; R <= lastDataRow; R++) {
-      ['chargeAmount', 'adjCollections'].forEach(key => {
-        const ref = XLSX.utils.encode_cell({ r: R, c: COL[key] });
-        if (rawSheet[ref] && rawSheet[ref].t === 'n') rawSheet[ref].z = '#,##0.00';
-      });
+      const chargeRef = XLSX.utils.encode_cell({ r: R, c: COL.chargeAmount });
+      const rateRef = XLSX.utils.encode_cell({ r: R, c: COL.collRate });
+      if (rawSheet[chargeRef] && rawSheet[chargeRef].t === 'n') rawSheet[chargeRef].z = '#,##0.00';
+      if (rawSheet[rateRef] && rawSheet[rateRef].t === 'n') rawSheet[rateRef].z = '0.000000%';
     }
 
-    // Live formula columns — same calculations the dashboard uses (Collection
-    // Rate = Adj. Collections ÷ Charge Amount; Avg Ticket = Adj. Collections ÷
-    // Encounters), computed by Excel per row rather than hardcoded values, so
-    // the workbook stays auditable and recalculates if a value is edited.
-    const COLLRATE_COL = 12; // column M
-    const AVGTICKET_COL = 13; // column N
-    rawSheet[XLSX.utils.encode_cell({ r: 0, c: COLLRATE_COL })] = { t: 's', v: 'Collection Rate' };
-    rawSheet[XLSX.utils.encode_cell({ r: 0, c: AVGTICKET_COL })] = { t: 's', v: 'Avg Ticket ($)' };
-
+    // Live formula — Adj. Collections = Charge Amount × Collection Rate.
+    // Computed by Excel per row, not hardcoded, so it recalculates if a row is edited.
     for (let R = 1; R <= lastDataRow; R++) {
       const rowNum = R + 1; // 1-indexed for A1-style formula refs
       const chargeRef = 'H' + rowNum;
-      const adjRef = 'I' + rowNum;
-      const encRef = 'J' + rowNum;
+      const rateRef = 'I' + rowNum;
 
-      rawSheet[XLSX.utils.encode_cell({ r: R, c: COLLRATE_COL })] = {
-        t: 'n', f: `IF(${chargeRef}=0,"",${adjRef}/${chargeRef})`, z: '0.0%'
-      };
-      rawSheet[XLSX.utils.encode_cell({ r: R, c: AVGTICKET_COL })] = {
-        t: 'n', f: `IF(${encRef}=0,"",${adjRef}/${encRef})`, z: '#,##0.00'
+      rawSheet[XLSX.utils.encode_cell({ r: R, c: COL.adjCollections })] = {
+        t: 'n', f: `${chargeRef}*${rateRef}`, z: '#,##0.00'
       };
     }
 
@@ -3500,26 +3502,21 @@ function exportDashboardExcel() {
         t: 'n', f: `SUM(${colLetter}${firstRowNum}:${colLetter}${lastRowNum})`, z: fmt
       };
     });
-    // Portfolio-level Collection Rate / Avg Ticket on the totals row (not a
-    // per-row average — recomputed from the summed dollars, same as the
-    // dashboard's own blended-rate calculations).
+    // Portfolio-level Collection Rate on the totals row — a blended rate
+    // recomputed from the summed dollars, not a per-row average.
     const totChargeRef = XLSX.utils.encode_col(COL.chargeAmount) + totalRowNum;
     const totAdjRef = XLSX.utils.encode_col(COL.adjCollections) + totalRowNum;
-    const totEncRef = XLSX.utils.encode_col(COL.encounters) + totalRowNum;
-    rawSheet[XLSX.utils.encode_cell({ r: totalRowIdx, c: COLLRATE_COL })] = {
-      t: 'n', f: `IF(${totChargeRef}=0,"",${totAdjRef}/${totChargeRef})`, z: '0.0%'
-    };
-    rawSheet[XLSX.utils.encode_cell({ r: totalRowIdx, c: AVGTICKET_COL })] = {
-      t: 'n', f: `IF(${totEncRef}=0,"",${totAdjRef}/${totEncRef})`, z: '#,##0.00'
+    rawSheet[XLSX.utils.encode_cell({ r: totalRowIdx, c: COL.collRate })] = {
+      t: 'n', f: `IF(${totChargeRef}=0,"",${totAdjRef}/${totChargeRef})`, z: '0.000000%'
     };
 
-    range.e.c = Math.max(range.e.c, AVGTICKET_COL);
+    range.e.c = Math.max(range.e.c, COL.procedures);
     range.e.r = totalRowIdx;
     rawSheet['!ref'] = XLSX.utils.encode_range(range);
 
     rawSheet['!cols'] = [
       {wch:20},{wch:20},{wch:12},{wch:8},{wch:10},{wch:8},{wch:11},
-      {wch:16},{wch:18},{wch:11},{wch:11},{wch:16},{wch:14},{wch:13}
+      {wch:16},{wch:16},{wch:18},{wch:11},{wch:11}
     ];
     XLSX.utils.book_append_sheet(wb, rawSheet, 'Raw Data');
 
